@@ -1,0 +1,19 @@
+name = "metcue-worker"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+FIREBASE_PROJECT_ID = "metcue09"
+
+[[d1_databases]]
+binding = "metcue_db"
+database_name = "metcue-db"
+database_id = "b0d778df-0465-47e2-8fd5-e9737597f6b7"
+
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "metcue-index"
+
+[ai]
+binding = "AI"

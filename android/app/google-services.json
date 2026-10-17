@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1084823977938",
+    "project_id": "metcue09",
+    "storage_bucket": "metcue09.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1084823977938:android:0ddfa370463b197d08120b",
+        "android_client_info": {
+          "package_name": "com.aurunex.contact_card_builder"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAttRq9wWzGJaL_W8bzfz3XB1q051mKuLY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
