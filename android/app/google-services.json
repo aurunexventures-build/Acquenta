@@ -12,7 +12,20 @@
           "package_name": "com.aurunex.contact_card_builder"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1084823977938-v8tak834qs31632l19oqv6jkn7ilp8ol.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aurunex.contact_card_builder",
+            "certificate_hash": "cacbd56a0c93c2542b7ea0dcde83864d05f03440"
+          }
+        },
+        {
+          "client_id": "1084823977938-hcnoc1ev007mia9svj74qal4e7m09vnf.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAttRq9wWzGJaL_W8bzfz3XB1q051mKuLY"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1084823977938-hcnoc1ev007mia9svj74qal4e7m09vnf.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

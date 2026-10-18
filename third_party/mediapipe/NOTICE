@@ -1,0 +1,5 @@
+Canonical face model from Google MediaPipe
+Copyright Google LLC
+Licensed under the Apache License, Version 2.0.
+Source: https://github.com/google-ai-edge/mediapipe/blob/master/mediapipe/modules/face_geometry/data/canonical_face_model.obj
+Downloaded 2026-10-17; geometry converted into Dart vertices and unique triangle edges.

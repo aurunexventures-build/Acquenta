@@ -1,7 +1,8 @@
+import 'face_avatar.dart';
+import 'social_icon_row.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/saved_connection.dart';
-import '../services/vcard_service.dart';
 import '../screens/connection_detail_screen.dart';
 
 class ConnectionsWalletStack extends StatefulWidget {
@@ -20,7 +21,7 @@ class ConnectionsWalletStack extends StatefulWidget {
 
 class _ConnectionsWalletStackState extends State<ConnectionsWalletStack> {
   int? _expandedIndex;
-  String _filterQuery = '';
+  final String _filterQuery = '';
 
   List<SavedConnection> get _filteredConnections {
     if (_filterQuery.trim().isEmpty) return widget.connections;
@@ -119,7 +120,8 @@ class _ConnectionsWalletStackState extends State<ConnectionsWalletStack> {
       return _buildEmptyState(context);
     }
 
-    final isExpanded = _expandedIndex != null && _expandedIndex! < connections.length;
+    final isExpanded =
+        _expandedIndex != null && _expandedIndex! < connections.length;
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
@@ -134,7 +136,9 @@ class _ConnectionsWalletStackState extends State<ConnectionsWalletStack> {
               Row(
                 children: [
                   Icon(
-                    isExpanded ? Icons.badge_rounded : Icons.view_agenda_rounded,
+                    isExpanded
+                        ? Icons.badge_rounded
+                        : Icons.view_agenda_rounded,
                     size: 16,
                     color: Colors.white70,
                   ),
@@ -155,20 +159,34 @@ class _ConnectionsWalletStackState extends State<ConnectionsWalletStack> {
               if (isExpanded)
                 TextButton.icon(
                   onPressed: _collapseStack,
-                  icon: const Icon(Icons.layers_outlined, size: 14, color: Colors.blueAccent),
+                  icon: const Icon(
+                    Icons.layers_outlined,
+                    size: 14,
+                    color: Colors.blueAccent,
+                  ),
                   label: const Text(
                     'View All Cards',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blueAccent),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.blueAccent,
+                    ),
                   ),
                   style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     visualDensity: VisualDensity.compact,
                   ),
                 )
               else
                 Text(
                   'Tap to expand',
-                  style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.4)),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.white.withValues(alpha: 0.4),
+                  ),
                 ),
             ],
           ),
@@ -185,10 +203,14 @@ class _ConnectionsWalletStackState extends State<ConnectionsWalletStack> {
     );
   }
 
-  Widget _buildStackedWallet(BuildContext context, List<SavedConnection> connections) {
+  Widget _buildStackedWallet(
+    BuildContext context,
+    List<SavedConnection> connections,
+  ) {
     // Each card peeks out by ~66px showing only picture and name
     const double cardPeekOffset = 68.0;
-    final double stackHeight = 180.0 + ((connections.length - 1) * cardPeekOffset);
+    final double stackHeight =
+        180.0 + ((connections.length - 1) * cardPeekOffset);
 
     return SizedBox(
       height: stackHeight,
@@ -206,8 +228,18 @@ class _ConnectionsWalletStackState extends State<ConnectionsWalletStack> {
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 320),
               curve: Curves.easeOutCubic,
-              transform: Matrix4.identity()..scale(1.0 - (index * 0.012)),
-              child: _buildStackedCardItem(conn, theme, () => _expandCard(index)),
+              transform: Matrix4.identity()
+                ..scaleByDouble(
+                  1.0 - (index * 0.012),
+                  1.0 - (index * 0.012),
+                  1.0 - (index * 0.012),
+                  1.0,
+                ),
+              child: _buildStackedCardItem(
+                conn,
+                theme,
+                () => _expandCard(index),
+              ),
             ),
           );
         }),
@@ -248,27 +280,12 @@ class _ConnectionsWalletStackState extends State<ConnectionsWalletStack> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Picture / Avatar
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    gradient: theme.avatarGradient,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white24, width: 1.5),
-                    boxShadow: const [
-                      BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2)),
-                    ],
-                  ),
-                  child: Center(
-                    child: Text(
-                      conn.fullName.trim().split(' ').map((n) => n.isNotEmpty ? n[0] : '').take(2).join(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ),
+                FaceAvatar(
+                  name: conn.fullName,
+                  photo: conn.avatarUrl,
+                  radius: 22,
+                  backgroundColor: theme.avatarGradient.colors.first,
+                  foregroundColor: Colors.white,
                 ),
                 const SizedBox(width: 14),
 
@@ -290,14 +307,22 @@ class _ConnectionsWalletStackState extends State<ConnectionsWalletStack> {
                             ),
                           ),
                           if (conn.isFavorite)
-                            const Icon(Icons.star_rounded, size: 16, color: Colors.amber),
+                            const Icon(
+                              Icons.star_rounded,
+                              size: 16,
+                              color: Colors.amber,
+                            ),
                         ],
                       ),
                       const SizedBox(height: 2),
                       Text(
                         conn.role.isNotEmpty
-                            ? (conn.company.isNotEmpty ? '${conn.role} · ${conn.company}' : conn.role)
-                            : (conn.eventContext.eventName.isNotEmpty ? 'Met at ${conn.eventContext.eventName}' : ''),
+                            ? (conn.company.isNotEmpty
+                                  ? '${conn.role} · ${conn.company}'
+                                  : conn.role)
+                            : (conn.eventContext.eventName.isNotEmpty
+                                  ? 'Met at ${conn.eventContext.eventName}'
+                                  : ''),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -352,27 +377,12 @@ class _ConnectionsWalletStackState extends State<ConnectionsWalletStack> {
                 // Header with Picture and Name
                 Row(
                   children: [
-                    Container(
-                      width: 58,
-                      height: 58,
-                      decoration: BoxDecoration(
-                        gradient: theme.avatarGradient,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white30, width: 2),
-                        boxShadow: const [
-                          BoxShadow(color: Colors.black38, blurRadius: 10, offset: Offset(0, 3)),
-                        ],
-                      ),
-                      child: Center(
-                        child: Text(
-                          conn.fullName.trim().split(' ').map((n) => n.isNotEmpty ? n[0] : '').take(2).join(),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 22,
-                          ),
-                        ),
-                      ),
+                    FaceAvatar(
+                      name: conn.fullName,
+                      photo: conn.avatarUrl,
+                      radius: 29,
+                      backgroundColor: theme.avatarGradient.colors.first,
+                      foregroundColor: Colors.white,
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -392,14 +402,27 @@ class _ConnectionsWalletStackState extends State<ConnectionsWalletStack> {
                                   ),
                                 ),
                               ),
+                              if (conn.links.isNotEmpty)
+                                Flexible(
+                                  child: SocialIconRow(
+                                    links: conn.links,
+                                    color: Colors.white,
+                                  ),
+                                ),
                               if (conn.isFavorite)
-                                const Icon(Icons.star_rounded, size: 20, color: Colors.amber),
+                                const Icon(
+                                  Icons.star_rounded,
+                                  size: 20,
+                                  color: Colors.amber,
+                                ),
                             ],
                           ),
                           const SizedBox(height: 3),
                           Text(
                             conn.role.isNotEmpty
-                                ? (conn.company.isNotEmpty ? '${conn.role} · ${conn.company}' : conn.role)
+                                ? (conn.company.isNotEmpty
+                                      ? '${conn.role} · ${conn.company}'
+                                      : conn.role)
                                 : 'Connection',
                             style: TextStyle(
                               fontSize: 12,
@@ -418,16 +441,25 @@ class _ConnectionsWalletStackState extends State<ConnectionsWalletStack> {
                 // Event Badge (Where you met)
                 if (conn.eventContext.eventName.isNotEmpty)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.amber.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                      border: Border.all(
+                        color: Colors.amber.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.location_on_rounded, size: 14, color: Colors.amberAccent),
+                        const Icon(
+                          Icons.location_on_rounded,
+                          size: 14,
+                          color: Colors.amberAccent,
+                        ),
                         const SizedBox(width: 6),
                         Text(
                           'Met at ${conn.eventContext.eventName}',
@@ -441,157 +473,34 @@ class _ConnectionsWalletStackState extends State<ConnectionsWalletStack> {
                     ),
                   ),
 
-                // Message to Future Self (Personal Impression & Human Touch)
-                if (conn.futureSelfNote.isNotEmpty || conn.vibeTags.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          const Color(0xFFD97706).withValues(alpha: 0.15),
-                          const Color(0xFF8B5CF6).withValues(alpha: 0.10),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: const Color(0xFFFBBF24).withValues(alpha: 0.25),
-                        width: 1,
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.mail_outline_rounded, size: 14, color: Color(0xFFFBBF24)),
-                            SizedBox(width: 6),
-                            Text(
-                              'MESSAGE TO MY FUTURE SELF',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.9,
-                                color: Color(0xFFFBBF24),
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (conn.futureSelfNote.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            conn.futureSelfNote.startsWith('Note to Future Self:')
-                                ? conn.futureSelfNote.substring(20).trim()
-                                : conn.futureSelfNote,
-                            style: const TextStyle(
-                              fontSize: 12.5,
-                              fontStyle: FontStyle.italic,
-                              height: 1.45,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w400,
-                            ),
-                          ),
-                        ],
-                        if (conn.vibeTags.isNotEmpty) ...[
-                          const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: conn.vibeTags.map((vibe) {
-                              return Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.20),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: const Color(0xFFA78BFA).withValues(alpha: 0.35),
-                                    width: 0.8,
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.auto_awesome, size: 10, color: Color(0xFFA78BFA)),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      vibe,
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFFDDD6FE),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-
-                // Discussion notes (The recall context)
-                if (conn.eventContext.notes.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'DISCUSSION & MEMORY NOTES',
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.8,
-                            color: Colors.white54,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          conn.eventContext.notes,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            height: 1.4,
-                            color: Colors.white70,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-
-                // Tech Stack tags
-                if (conn.techStack.isNotEmpty) ...[
+                if (conn.distinctiveMemory.isNotEmpty ||
+                    conn.eventContext.notes.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: conn.techStack.map((tech) {
-                      return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.06),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-                        ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.chat_bubble_outline_rounded,
+                        size: 18,
+                        color: Colors.white54,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
                         child: Text(
-                          tech,
-                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: Colors.white70),
+                          conn.distinctiveMemory.isNotEmpty
+                              ? conn.distinctiveMemory
+                              : conn.eventContext.notes,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            height: 1.4,
+                          ),
                         ),
-                      );
-                    }).toList(),
+                      ),
+                    ],
                   ),
                 ],
-
                 const SizedBox(height: 20),
                 const Divider(color: Color(0x1FFFFFFF), height: 1),
                 const SizedBox(height: 16),
@@ -616,16 +525,18 @@ class _ConnectionsWalletStackState extends State<ConnectionsWalletStack> {
                       _buildIconButton(
                         icon: Icons.email_rounded,
                         label: 'Email',
-                        onTap: () => launchUrl(Uri.parse('mailto:${conn.email}')),
+                        onTap: () =>
+                            launchUrl(Uri.parse('mailto:${conn.email}')),
                       ),
                     _buildIconButton(
                       icon: Icons.badge_outlined,
-                      label: 'Full Profile',
+                      label: 'Details',
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => ConnectionDetailScreen(connectionId: conn.id),
+                            builder: (_) =>
+                                ConnectionDetailScreen(connectionId: conn.id),
                           ),
                         );
                       },
@@ -658,7 +569,9 @@ class _ConnectionsWalletStackState extends State<ConnectionsWalletStack> {
                     height: 6,
                     margin: const EdgeInsets.symmetric(horizontal: 3),
                     decoration: BoxDecoration(
-                      color: dotIndex == index ? Colors.blueAccent : Colors.white24,
+                      color: dotIndex == index
+                          ? Colors.blueAccent
+                          : Colors.white24,
                       borderRadius: BorderRadius.circular(3),
                     ),
                   ),
@@ -667,8 +580,12 @@ class _ConnectionsWalletStackState extends State<ConnectionsWalletStack> {
               const SizedBox(width: 8),
               IconButton(
                 icon: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                color: index < connections.length - 1 ? Colors.white70 : Colors.white24,
-                onPressed: index < connections.length - 1 ? () => _expandCard(index + 1) : null,
+                color: index < connections.length - 1
+                    ? Colors.white70
+                    : Colors.white24,
+                onPressed: index < connections.length - 1
+                    ? () => _expandCard(index + 1)
+                    : null,
               ),
             ],
           ),
@@ -699,7 +616,11 @@ class _ConnectionsWalletStackState extends State<ConnectionsWalletStack> {
             const SizedBox(height: 6),
             Text(
               label,
-              style: const TextStyle(fontSize: 10, color: Colors.white70, fontWeight: FontWeight.w500),
+              style: const TextStyle(
+                fontSize: 10,
+                color: Colors.white70,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ],
         ),
@@ -719,18 +640,29 @@ class _ConnectionsWalletStackState extends State<ConnectionsWalletStack> {
                 color: Colors.blueAccent.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.people_outline, size: 48, color: Colors.blueAccent),
+              child: const Icon(
+                Icons.people_outline,
+                size: 48,
+                color: Colors.blueAccent,
+              ),
             ),
             const SizedBox(height: 20),
             const Text(
               'No Connections Yet',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Scan a badge, take a 5-second voice memo, or add someone you meet at your next event.',
+              'Scan a contact QR, speak a memory cue, or add someone you meet at your next event.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.6)),
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.white.withValues(alpha: 0.6),
+              ),
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
@@ -740,8 +672,13 @@ class _ConnectionsWalletStackState extends State<ConnectionsWalletStack> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blueAccent,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 14,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
               ),
             ),
           ],

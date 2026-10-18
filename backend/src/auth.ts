@@ -14,8 +14,9 @@ export async function verifyAuth(request: Request, projectId: string): Promise<s
     const { payload } = await jwtVerify(token, GOOGLE_JWKS, {
       issuer: `https://securetoken.google.com/${projectId}`,
       audience: projectId,
+      algorithms: ['RS256'],
     });
-    if (!payload.sub) {
+    if (!payload.sub || payload.sub.length > 128) {
       throw new Error("Invalid token: sub claim missing.");
     }
     return payload.sub;

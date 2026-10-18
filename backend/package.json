@@ -1,17 +1,24 @@
 {
-  "name": "metcue-worker",
+  "name": "acquenta-worker",
   "version": "1.0.0",
-  "description": "Cloudflare Edge Worker for MetCue - Auth, Sync, Vectorize, and Workers AI",
+  "description": "Cloudflare Edge Worker for Acquenta - Auth, Sync, Vectorize, and Workers AI",
   "main": "src/index.ts",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "dev": "wrangler dev --config ../wrangler.jsonc",
+    "deploy": "wrangler deploy --config ../wrangler.jsonc",
+    "types": "wrangler types --config ../wrangler.jsonc worker-configuration.d.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node test/run.mjs",
+    "deploy:check": "wrangler deploy --config ../wrangler.jsonc --dry-run",
+    "db:migrate:local": "wrangler d1 migrations apply metcue-db --config ../wrangler.jsonc --local"
   },
   "dependencies": {
     "jose": "^5.9.6"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20241022.0",
-    "typescript": "^5.6.3"
+    "@cloudflare/workers-types": "^5.20261016.1",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.6.3",
+    "wrangler": "^4.151.1"
   }
 }

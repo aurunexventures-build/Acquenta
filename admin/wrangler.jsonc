@@ -1,0 +1,13 @@
+{
+  "$schema": "../backend/node_modules/wrangler/config-schema.json",
+  "name": "metcue-admin", "main": "src/index.ts",
+  "compatibility_date": "2026-10-18", "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true, "preview_urls": false,
+  "routes": [{"pattern":"admin.acquenta.aurunex.com","custom_domain":true},{"pattern":"admin.metcue.aurunex.com","custom_domain":true}],
+  "observability": {"enabled":true,"head_sampling_rate":1},
+  "assets":{"directory":"public","binding":"ASSETS","run_worker_first":true},
+  "vars":{"FIREBASE_PROJECT_ID":"metcue09","ADMIN_EMAILS":"aurunex.ventures@gmail.com"},
+  "d1_databases":[{"binding":"metcue_db","database_name":"metcue-db","database_id":"b0d778df-0465-47e2-8fd5-e9737597f6b7","migrations_dir":"../backend/migrations"}],
+  "vectorize":[{"binding":"VECTORIZE","index_name":"metcue-index"}],
+  "r2_buckets":[{"binding":"PHOTOS","bucket_name":"metcue-photos"}]
+}

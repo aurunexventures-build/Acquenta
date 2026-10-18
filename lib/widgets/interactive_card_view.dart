@@ -1,4 +1,9 @@
+import 'social_icon_row.dart';
+import '../screens/card_detail_screen.dart';
+import 'face_avatar.dart';
 import 'dart:math' as math;
+import 'dart:convert';
+import 'qr_share_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../models/contact_card.dart';
@@ -209,11 +214,17 @@ class _InteractiveCardViewState extends State<InteractiveCardView>
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: theme.badgeBg,
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: theme.borderColor, width: 0.8),
+                            border: Border.all(
+                              color: theme.borderColor,
+                              width: 0.8,
+                            ),
                           ),
                           child: Text(
                             widget.card.title.toUpperCase(),
@@ -228,23 +239,20 @@ class _InteractiveCardViewState extends State<InteractiveCardView>
                         if (widget.card.isDefault) ...[
                           const SizedBox(width: 8),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
                             decoration: BoxDecoration(
                               color: Colors.amber.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Row(
                               children: [
-                                Icon(Icons.star_rounded, size: 12, color: Colors.amber),
-                                SizedBox(width: 3),
-                                Text(
-                                  'PRIMARY',
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.amber,
-                                    letterSpacing: 0.5,
-                                  ),
+                                Icon(
+                                  Icons.star_rounded,
+                                  size: 12,
+                                  color: Colors.amber,
                                 ),
                               ],
                             ),
@@ -257,44 +265,69 @@ class _InteractiveCardViewState extends State<InteractiveCardView>
                         // Tap to Flip Prompt
                         if (widget.isExpanded)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
                             decoration: BoxDecoration(
                               color: Colors.white.withValues(alpha: 0.08),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Row(
                               children: [
-                                Icon(Icons.flip_rounded, size: 12, color: Colors.white70),
-                                SizedBox(width: 4),
-                                Text(
-                                  'Tap to Flip',
-                                  style: TextStyle(fontSize: 10, color: Colors.white70),
+                                Icon(
+                                  Icons.flip_rounded,
+                                  size: 12,
+                                  color: Colors.white70,
                                 ),
                               ],
                             ),
                           )
                         else
-                          Icon(Icons.nfc_rounded, size: 16, color: theme.subtextColor.withValues(alpha: 0.7)),
+                          Icon(
+                            Icons.nfc_rounded,
+                            size: 16,
+                            color: theme.subtextColor.withValues(alpha: 0.7),
+                          ),
                       ],
                     ),
                   ],
                 ),
 
                 const SizedBox(height: 20),
-
-                // Name & Role
-                Text(
-                  widget.card.fullName,
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.4,
-                    color: theme.textColor,
-                  ),
+                FaceAvatar(
+                  name: widget.card.fullName,
+                  photo: widget.card.avatarUrl,
+                  radius: 32,
+                  backgroundColor: theme.badgeBg,
+                  foregroundColor: theme.accentColor,
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        widget.card.fullName,
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.4,
+                          color: theme.textColor,
+                        ),
+                      ),
+                    ),
+                    if (widget.card.links.isNotEmpty)
+                      Flexible(
+                        child: SocialIconRow(
+                          links: widget.card.links,
+                          color: theme.textColor,
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${widget.card.role}${widget.card.company.isNotEmpty ? '  ·  ${widget.card.company}' : ''}',
+                  widget.card.role,
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
@@ -302,11 +335,11 @@ class _InteractiveCardViewState extends State<InteractiveCardView>
                   ),
                 ),
 
-                if (widget.card.headline.isNotEmpty) ...[
+                if (widget.isExpanded && widget.card.headline.isNotEmpty) ...[
                   const SizedBox(height: 10),
                   Text(
                     widget.card.headline,
-                    maxLines: 2,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 12,
@@ -316,33 +349,6 @@ class _InteractiveCardViewState extends State<InteractiveCardView>
                   ),
                 ],
 
-                const SizedBox(height: 16),
-
-                // Tech Stack Micro-Chips
-                if (widget.card.techStack.isNotEmpty)
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: widget.card.techStack.take(5).map((skill) {
-                      return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.06),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-                        ),
-                        child: Text(
-                          skill,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w500,
-                            color: theme.textColor.withValues(alpha: 0.85),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-
                 // Bottom Footer on expanded card
                 if (widget.isExpanded) ...[
                   const SizedBox(height: 20),
@@ -351,12 +357,19 @@ class _InteractiveCardViewState extends State<InteractiveCardView>
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'metcue.io/c/${widget.card.id}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontFamily: 'monospace',
-                          color: theme.subtextColor.withValues(alpha: 0.7),
+                      IconButton(
+                        tooltip: 'Details',
+                        icon: Icon(
+                          Icons.info_outline_rounded,
+                          color: theme.subtextColor,
+                          size: 20,
+                        ),
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                CardDetailScreen(cardId: widget.card.id),
+                          ),
                         ),
                       ),
                       Row(
@@ -390,7 +403,11 @@ class _InteractiveCardViewState extends State<InteractiveCardView>
   }
 
   Widget _buildBackCard(_CardThemeConfig theme) {
-    final webUrl = 'https://metcue-worker.quadban-cloudflare.workers.dev/c/${widget.card.id}${widget.activeEvent != null ? '?event=${Uri.encodeComponent(widget.activeEvent!.eventName)}' : ''}';
+    final qrData = VCardService.generateVCard(
+      card: widget.card,
+      eventContext: widget.activeEvent,
+    );
+    final fitsQr = utf8.encode(qrData).length <= 2000;
 
     return Container(
       width: double.infinity,
@@ -432,7 +449,11 @@ class _InteractiveCardViewState extends State<InteractiveCardView>
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close_rounded, size: 18, color: Colors.white70),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        size: 18,
+                        color: Colors.white70,
+                      ),
                       onPressed: _toggleFlip,
                       visualDensity: VisualDensity.compact,
                     ),
@@ -454,26 +475,37 @@ class _InteractiveCardViewState extends State<InteractiveCardView>
                       ),
                     ],
                   ),
-                  child: QrImageView(
-                    data: webUrl,
-                    version: QrVersions.auto,
-                    size: 150,
-                    eyeStyle: const QrEyeStyle(
-                      eyeShape: QrEyeShape.square,
-                      color: Color(0xFF0F172A),
-                    ),
-                    dataModuleStyle: const QrDataModuleStyle(
-                      dataModuleShape: QrDataModuleShape.square,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
+                  child: fitsQr
+                      ? QrImageView(
+                          data: qrData,
+                          version: QrVersions.auto,
+                          size: 200,
+                          eyeStyle: const QrEyeStyle(
+                            eyeShape: QrEyeShape.square,
+                            color: Color(0xFF0F172A),
+                          ),
+                          dataModuleStyle: const QrDataModuleStyle(
+                            dataModuleShape: QrDataModuleShape.square,
+                            color: Color(0xFF0F172A),
+                          ),
+                        )
+                      : const SizedBox(
+                          width: 200,
+                          child: Text(
+                            'Use Share options for a large card or online link.',
+                            style: TextStyle(color: Colors.black),
+                          ),
+                        ),
                 ),
 
                 const SizedBox(height: 14),
 
                 if (widget.activeEvent != null)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.amber.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(20),
@@ -489,12 +521,23 @@ class _InteractiveCardViewState extends State<InteractiveCardView>
                   )
                 else
                   Text(
-                    'Point camera to scan & receive vCard',
+                    'Scan in Acquenta to save this card offline',
                     style: TextStyle(fontSize: 11, color: theme.subtextColor),
                   ),
 
                 const SizedBox(height: 14),
 
+                TextButton.icon(
+                  onPressed: () => showDialog(
+                    context: context,
+                    builder: (_) => QrShareDialog(
+                      card: widget.card,
+                      defaultEventContext: widget.activeEvent,
+                    ),
+                  ),
+                  icon: const Icon(Icons.share),
+                  label: const Text('Share options'),
+                ),
                 // Quick Action Bar
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -504,10 +547,20 @@ class _InteractiveCardViewState extends State<InteractiveCardView>
                       label: const Text('Save vCard'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.white,
-                        side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        side: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.2),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
                       ),
                       onPressed: () {
                         VCardService.shareVCard(
@@ -522,10 +575,20 @@ class _InteractiveCardViewState extends State<InteractiveCardView>
                       label: const Text('Back to Card'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: theme.accentColor,
-                        side: BorderSide(color: theme.accentColor.withValues(alpha: 0.3)),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        side: BorderSide(
+                          color: theme.accentColor.withValues(alpha: 0.3),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
                       ),
                       onPressed: _toggleFlip,
                     ),

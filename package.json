@@ -1,0 +1,11 @@
+{
+  "name": "acquenta",
+  "private": true,
+  "scripts": {
+    "build:web": "flutter build web",
+    "dev": "npm run build:web && npm --prefix backend run dev",
+    "deploy": "npm run build:web && npm --prefix backend run deploy",
+    "deploy:check": "npm run build:web && npm --prefix backend run deploy:check",
+    "check": "flutter analyze && flutter test && npm --prefix backend run typecheck && npm --prefix backend test"
+  }
+}

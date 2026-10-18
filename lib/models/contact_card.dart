@@ -1,12 +1,6 @@
 import 'card_link.dart';
 
-enum CardCategory {
-  professional,
-  personal,
-  sideProject,
-  event,
-  custom,
-}
+enum CardCategory { professional, personal, sideProject, event, custom }
 
 extension CardCategoryExtension on CardCategory {
   String get displayName {
@@ -27,7 +21,9 @@ extension CardCategoryExtension on CardCategory {
 
 class ContactCard {
   final String id;
-  final String title; // Card label, e.g. "Lead Flutter Dev", "Side Project Creator"
+  final String avatarUrl;
+  final String
+  title; // Card label, e.g. "Lead Flutter Dev", "Side Project Creator"
   final CardCategory category;
   final String fullName;
   final String headline;
@@ -37,7 +33,8 @@ class ContactCard {
   final String phone;
   final String location;
   final String bio;
-  final List<String> techStack; // e.g. ["Flutter", "Dart", "Android", "Firebase"]
+  final List<String>
+  techStack; // e.g. ["Flutter", "Dart", "Android", "Firebase"]
   final List<CardLink> links;
   final String themeColorHex;
   final bool isDefault;
@@ -46,6 +43,7 @@ class ContactCard {
 
   const ContactCard({
     required this.id,
+    this.avatarUrl = '',
     required this.title,
     this.category = CardCategory.professional,
     required this.fullName,
@@ -67,6 +65,7 @@ class ContactCard {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'avatarUrl': avatarUrl,
       'title': title,
       'category': category.name,
       'fullName': fullName,
@@ -89,6 +88,7 @@ class ContactCard {
   factory ContactCard.fromJson(Map<String, dynamic> json) {
     return ContactCard(
       id: json['id'] as String? ?? '',
+      avatarUrl: json['avatarUrl'] as String? ?? '',
       title: json['title'] as String? ?? 'My Card',
       category: CardCategory.values.firstWhere(
         (e) => e.name == (json['category'] as String?),
@@ -102,12 +102,14 @@ class ContactCard {
       phone: json['phone'] as String? ?? '',
       location: json['location'] as String? ?? '',
       bio: json['bio'] as String? ?? '',
-      techStack: (json['techStack'] as List<dynamic>?)
+      techStack:
+          (json['techStack'] as List<dynamic>?)
               ?.map((e) => e.toString().trim())
               .where((e) => e.isNotEmpty)
               .toList() ??
           const [],
-      links: (json['links'] as List<dynamic>?)
+      links:
+          (json['links'] as List<dynamic>?)
               ?.map((e) => CardLink.fromJson(e as Map<String, dynamic>))
               .toList() ??
           const [],
@@ -124,6 +126,7 @@ class ContactCard {
 
   ContactCard copyWith({
     String? id,
+    String? avatarUrl,
     String? title,
     CardCategory? category,
     String? fullName,
@@ -143,6 +146,7 @@ class ContactCard {
   }) {
     return ContactCard(
       id: id ?? this.id,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
       title: title ?? this.title,
       category: category ?? this.category,
       fullName: fullName ?? this.fullName,

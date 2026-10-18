@@ -1,3 +1,4 @@
+import 'face_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/saved_connection.dart';
@@ -7,6 +8,7 @@ import '../services/search_service.dart';
 class SynapticBrainMesh extends StatefulWidget {
   final List<SavedConnection> connections;
   final String searchQuery;
+  final List<SearchResult>? rankedResults;
   final String? selectedEventFilter;
   final String? selectedTechFilter;
   final String? selectedVibeFilter;
@@ -17,6 +19,7 @@ class SynapticBrainMesh extends StatefulWidget {
     super.key,
     required this.connections,
     this.searchQuery = '',
+    this.rankedResults,
     this.selectedEventFilter,
     this.selectedTechFilter,
     this.selectedVibeFilter,
@@ -64,9 +67,12 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
 
   bool get _hasActiveQuery =>
       widget.searchQuery.trim().isNotEmpty ||
-      (widget.selectedEventFilter != null && widget.selectedEventFilter!.isNotEmpty) ||
-      (widget.selectedTechFilter != null && widget.selectedTechFilter!.isNotEmpty) ||
-      (widget.selectedVibeFilter != null && widget.selectedVibeFilter!.isNotEmpty);
+      (widget.selectedEventFilter != null &&
+          widget.selectedEventFilter!.isNotEmpty) ||
+      (widget.selectedTechFilter != null &&
+          widget.selectedTechFilter!.isNotEmpty) ||
+      (widget.selectedVibeFilter != null &&
+          widget.selectedVibeFilter!.isNotEmpty);
 
   /// -----------------------------------------------------------------------
   /// Uses SearchService (Cognitive Semantic Engine) — NOT primitive matching.
@@ -76,6 +82,9 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
   /// -----------------------------------------------------------------------
   List<SearchResult> _getSearchResults() {
     if (!_hasActiveQuery) return [];
+    if (widget.rankedResults != null) {
+      return widget.rankedResults!.take(4).toList();
+    }
     return SearchService.search(
       connections: widget.connections,
       query: widget.searchQuery,
@@ -96,8 +105,8 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
         r.connection.id: r.cognitiveReason.isNotEmpty
             ? r.cognitiveReason
             : r.matchReasons.isNotEmpty
-                ? r.matchReasons.first
-                : '',
+            ? r.matchReasons.first
+            : '',
     };
 
     return LayoutBuilder(
@@ -109,9 +118,7 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
           children: [
             // Subtle neural background grid/matrix dots
             Positioned.fill(
-              child: CustomPaint(
-                painter: _NeuralBackgroundPainter(),
-              ),
+              child: CustomPaint(painter: _NeuralBackgroundPainter()),
             ),
 
             if (!_hasActiveQuery)
@@ -122,7 +129,12 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
               _buildNoMatchesState(width, height)
             else
               // 3. ACTIVE FIRING STATE: BRAIN CONNECTING WIRES TO MATCHED PEOPLE
-              _buildActiveSynapticMesh(width, height, matchedConnections, cognitiveReasons),
+              _buildActiveSynapticMesh(
+                width,
+                height,
+                matchedConnections,
+                cognitiveReasons,
+              ),
 
             // Glassmorphic Inspector Sheet for Selected Person
             if (_inspectedConnection != null)
@@ -130,7 +142,10 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
                 left: 16,
                 right: 16,
                 bottom: 16,
-                child: _buildInspectedPersonSheet(context, _inspectedConnection!),
+                child: _buildInspectedPersonSheet(
+                  context,
+                  _inspectedConnection!,
+                ),
               ),
           ],
         );
@@ -174,7 +189,9 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: const Color(0xFF38BDF8).withValues(alpha: auraOpacity),
+                            color: const Color(
+                              0xFF38BDF8,
+                            ).withValues(alpha: auraOpacity),
                             width: 1.5,
                           ),
                         ),
@@ -187,7 +204,9 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: const Color(0xFFA855F7).withValues(alpha: auraOpacity * 0.8),
+                            color: const Color(
+                              0xFFA855F7,
+                            ).withValues(alpha: auraOpacity * 0.8),
                             width: 1.0,
                           ),
                         ),
@@ -200,23 +219,26 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           gradient: const RadialGradient(
-                            colors: [
-                              Color(0xFF1E293B),
-                              Color(0xFF0F172A),
-                            ],
+                            colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
                           ),
                           border: Border.all(
-                            color: const Color(0xFF38BDF8).withValues(alpha: 0.6),
+                            color: const Color(
+                              0xFF38BDF8,
+                            ).withValues(alpha: 0.6),
                             width: 2.0,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
+                              color: const Color(
+                                0xFF38BDF8,
+                              ).withValues(alpha: 0.35),
                               blurRadius: 28,
                               spreadRadius: 4,
                             ),
                             BoxShadow(
-                              color: const Color(0xFFA855F7).withValues(alpha: 0.25),
+                              color: const Color(
+                                0xFFA855F7,
+                              ).withValues(alpha: 0.25),
                               blurRadius: 36,
                               spreadRadius: 2,
                             ),
@@ -245,7 +267,10 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
 
                 // Friendly Status Badge
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFF0F172A),
                     borderRadius: BorderRadius.circular(20),
@@ -280,7 +305,7 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
 
                 // Headline & User-Friendly Prompt Instructions
                 const Text(
-                  'MetCue Neural Recall',
+                  'Acquenta Neural Recall',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
@@ -392,18 +417,29 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
                 color: const Color(0xFF1E293B),
                 border: Border.all(color: Colors.white12),
               ),
-              child: const Icon(Icons.psychology_alt_rounded, size: 36, color: Colors.grey),
+              child: const Icon(
+                Icons.psychology_alt_rounded,
+                size: 36,
+                color: Colors.grey,
+              ),
             ),
             const SizedBox(height: 16),
             Text(
               'No Synaptic Connections Found',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
             ),
             const SizedBox(height: 6),
             Text(
               'No contacts matched "${widget.searchQuery}". Try searching by a skill, company, or vibe tag.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.6)),
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.white.withValues(alpha: 0.6),
+              ),
             ),
           ],
         ),
@@ -415,7 +451,11 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
   /// 3. ACTIVE FIRING STATE: Brain Connecting Synaptic Wires Outward
   /// ---------------------------------------------------------
   Widget _buildActiveSynapticMesh(
-      double width, double height, List<SavedConnection> matches, Map<String, String> cognitiveReasons) {
+    double width,
+    double height,
+    List<SavedConnection> matches,
+    Map<String, String> cognitiveReasons,
+  ) {
     // Top-centered brain position
     final brainPos = Offset(width / 2, 72.0);
 
@@ -495,18 +535,14 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: const RadialGradient(
-          colors: [
-            Color(0xFF1E293B),
-            Color(0xFF0F172A),
-          ],
+          colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
         ),
-        border: Border.all(
-          color: const Color(0xFF38BDF8),
-          width: 2.0,
-        ),
+        border: Border.all(color: const Color(0xFF38BDF8), width: 2.0),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF38BDF8).withValues(alpha: 0.5 + (pulse * 0.3)),
+            color: const Color(
+              0xFF38BDF8,
+            ).withValues(alpha: 0.5 + (pulse * 0.3)),
             blurRadius: 20,
             spreadRadius: 2,
           ),
@@ -535,14 +571,23 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
   }
 
   /// Clean, un-messy Person Cluster: Avatar + Name + Relevant Skills + Concept Pathway
-  Widget _buildPersonCluster(SavedConnection conn, bool isSelected, String cognitiveReason) {
+  Widget _buildPersonCluster(
+    SavedConnection conn,
+    bool isSelected,
+    String cognitiveReason,
+  ) {
     final q = widget.searchQuery.toLowerCase();
-    final queryTokens = q.split(RegExp(r'\s+')).where((t) => t.length > 1).toSet();
+    final queryTokens = q
+        .split(RegExp(r'\s+'))
+        .where((t) => t.length > 1)
+        .toSet();
 
     // Pick skills that match ANY query token (not just the full phrase)
     final matchingSkills = conn.techStack.where((s) {
       final sLow = s.toLowerCase();
-      if (queryTokens.any((t) => sLow.contains(t) || t.contains(sLow))) return true;
+      if (queryTokens.any((t) => sLow.contains(t) || t.contains(sLow))) {
+        return true;
+      }
       return false;
     }).toList();
 
@@ -561,11 +606,23 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
     if (cognitiveReason.isNotEmpty) {
       // Strip "Concept link:" prefix if present for compactness
       reasonDisplay = cognitiveReason
-          .replaceFirst(RegExp(r'^Concept link:\s*', caseSensitive: false), '⚡ ')
-          .replaceFirst(RegExp(r'^Role association:\s*', caseSensitive: false), '🔗 ')
-          .replaceFirst(RegExp(r'^Skill:\s*', caseSensitive: false), '⚡ Skill: ')
+          .replaceFirst(
+            RegExp(r'^Concept link:\s*', caseSensitive: false),
+            '⚡ ',
+          )
+          .replaceFirst(
+            RegExp(r'^Role association:\s*', caseSensitive: false),
+            '🔗 ',
+          )
+          .replaceFirst(
+            RegExp(r'^Skill:\s*', caseSensitive: false),
+            '⚡ Skill: ',
+          )
           .replaceFirst(RegExp(r'^Vibe:\s*', caseSensitive: false), '✨ ')
-          .replaceFirst(RegExp(r'^Future Self:\s*', caseSensitive: false), '💛 ')
+          .replaceFirst(
+            RegExp(r'^Future Self:\s*', caseSensitive: false),
+            '💛 ',
+          )
           .replaceFirst(RegExp(r'^Discussion:\s*', caseSensitive: false), '💬 ')
           .replaceFirst(RegExp(r'^Event:\s*', caseSensitive: false), '📍 ');
       if (reasonDisplay.length > 60) {
@@ -602,20 +659,30 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
                 end: Alignment.bottomRight,
               ),
               border: Border.all(
-                color: isSelected ? const Color(0xFFF59E0B) : const Color(0xFF60A5FA),
+                color: isSelected
+                    ? const Color(0xFFF59E0B)
+                    : const Color(0xFF60A5FA),
                 width: isSelected ? 2.5 : 1.5,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: (isSelected ? const Color(0xFFF59E0B) : const Color(0xFF3B82F6))
-                      .withValues(alpha: isSelected ? 0.6 : 0.3),
+                  color:
+                      (isSelected
+                              ? const Color(0xFFF59E0B)
+                              : const Color(0xFF3B82F6))
+                          .withValues(alpha: isSelected ? 0.6 : 0.3),
                   blurRadius: isSelected ? 16 : 8,
                 ),
               ],
             ),
             child: Center(
               child: Text(
-                conn.fullName.trim().split(' ').map((n) => n.isNotEmpty ? n[0] : '').take(2).join(),
+                conn.fullName
+                    .trim()
+                    .split(' ')
+                    .map((n) => n.isNotEmpty ? n[0] : '')
+                    .take(2)
+                    .join(),
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w800,
@@ -657,16 +724,25 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
             children: [
               ...displaySkills.map((s) {
                 return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFF0C242C),
                     borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: const Color(0xFF06B6D4).withValues(alpha: 0.6)),
+                    border: Border.all(
+                      color: const Color(0xFF06B6D4).withValues(alpha: 0.6),
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.bolt_rounded, size: 9, color: Color(0xFF06B6D4)),
+                      const Icon(
+                        Icons.bolt_rounded,
+                        size: 9,
+                        color: Color(0xFF06B6D4),
+                      ),
                       const SizedBox(width: 3),
                       Text(
                         s,
@@ -683,16 +759,25 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
 
               if (matchingVibe.isNotEmpty)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFF26123D),
                     borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: const Color(0xFFA855F7).withValues(alpha: 0.6)),
+                    border: Border.all(
+                      color: const Color(0xFFA855F7).withValues(alpha: 0.6),
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.auto_awesome, size: 9, color: Color(0xFFC084FC)),
+                      const Icon(
+                        Icons.auto_awesome,
+                        size: 9,
+                        color: Color(0xFFC084FC),
+                      ),
                       const SizedBox(width: 3),
                       Text(
                         matchingVibe,
@@ -717,7 +802,9 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
               decoration: BoxDecoration(
                 color: const Color(0xFF1A1200),
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: const Color(0xFFFBBF24).withValues(alpha: 0.45)),
+                border: Border.all(
+                  color: const Color(0xFFFBBF24).withValues(alpha: 0.45),
+                ),
               ),
               child: Text(
                 reasonDisplay,
@@ -738,12 +825,18 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
   }
 
   /// Floating Glassmorphic Inspector Sheet for the selected person
-  Widget _buildInspectedPersonSheet(BuildContext context, SavedConnection conn) {
+  Widget _buildInspectedPersonSheet(
+    BuildContext context,
+    SavedConnection conn,
+  ) {
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF131720),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFFBBF24).withValues(alpha: 0.4), width: 1.2),
+        border: Border.all(
+          color: const Color(0xFFFBBF24).withValues(alpha: 0.4),
+          width: 1.2,
+        ),
         boxShadow: const [
           BoxShadow(
             color: Colors.black87,
@@ -760,13 +853,12 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
           // Header with Avatar and Name
           Row(
             children: [
-              CircleAvatar(
+              FaceAvatar(
+                name: conn.fullName,
+                photo: conn.avatarUrl,
                 radius: 20,
-                backgroundColor: const Color(0xFF2563EB),
-                child: Text(
-                  conn.fullName.trim().split(' ').map((n) => n.isNotEmpty ? n[0] : '').take(2).join(),
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 14),
-                ),
+                backgroundColor: Colors.blue.withValues(alpha: .15),
+                foregroundColor: Colors.blue,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -775,13 +867,22 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
                   children: [
                     Text(
                       conn.fullName,
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
                     Text(
                       conn.role.isNotEmpty
-                          ? (conn.company.isNotEmpty ? '${conn.role} · ${conn.company}' : conn.role)
+                          ? (conn.company.isNotEmpty
+                                ? '${conn.role} · ${conn.company}'
+                                : conn.role)
                           : 'Connection',
-                      style: const TextStyle(fontSize: 12, color: Color(0xFF93C5FD)),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF93C5FD),
+                      ),
                     ),
                   ],
                 ),
@@ -805,14 +906,20 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
               decoration: BoxDecoration(
                 color: const Color(0xFFD97706).withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFFBBF24).withValues(alpha: 0.3)),
+                border: Border.all(
+                  color: const Color(0xFFFBBF24).withValues(alpha: 0.3),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Row(
                     children: [
-                      Icon(Icons.mail_outline_rounded, size: 12, color: Color(0xFFFBBF24)),
+                      Icon(
+                        Icons.mail_outline_rounded,
+                        size: 12,
+                        color: Color(0xFFFBBF24),
+                      ),
                       SizedBox(width: 4),
                       Text(
                         'MESSAGE TO FUTURE SELF',
@@ -827,7 +934,10 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    conn.futureSelfNote.replaceFirst(RegExp(r'^Note to Future Self:\s*'), ''),
+                    conn.futureSelfNote.replaceFirst(
+                      RegExp(r'^Note to Future Self:\s*'),
+                      '',
+                    ),
                     style: const TextStyle(
                       fontSize: 12,
                       fontStyle: FontStyle.italic,
@@ -848,20 +958,33 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
               runSpacing: 4,
               children: conn.vibeTags.map((vibe) {
                 return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.4)),
+                    border: Border.all(
+                      color: const Color(0xFF8B5CF6).withValues(alpha: 0.4),
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.auto_awesome, size: 10, color: Color(0xFFC084FC)),
+                      const Icon(
+                        Icons.auto_awesome,
+                        size: 10,
+                        color: Color(0xFFC084FC),
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         vibe,
-                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFFE9D5FF)),
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFFE9D5FF),
+                        ),
                       ),
                     ],
                   ),
@@ -876,29 +999,56 @@ class _SynapticBrainMeshState extends State<SynapticBrainMesh>
             children: [
               if (conn.phone.isNotEmpty)
                 TextButton.icon(
-                  icon: const Icon(Icons.phone_rounded, size: 14, color: Colors.blue),
-                  label: const Text('Call', style: TextStyle(fontSize: 12, color: Colors.blue)),
+                  icon: const Icon(
+                    Icons.phone_rounded,
+                    size: 14,
+                    color: Colors.blue,
+                  ),
+                  label: const Text(
+                    'Call',
+                    style: TextStyle(fontSize: 12, color: Colors.blue),
+                  ),
                   onPressed: () => launchUrl(Uri.parse('tel:${conn.phone}')),
                 ),
               if (conn.email.isNotEmpty)
                 TextButton.icon(
-                  icon: const Icon(Icons.email_rounded, size: 14, color: Colors.tealAccent),
-                  label: const Text('Email', style: TextStyle(fontSize: 12, color: Colors.tealAccent)),
+                  icon: const Icon(
+                    Icons.email_rounded,
+                    size: 14,
+                    color: Colors.tealAccent,
+                  ),
+                  label: const Text(
+                    'Email',
+                    style: TextStyle(fontSize: 12, color: Colors.tealAccent),
+                  ),
                   onPressed: () => launchUrl(Uri.parse('mailto:${conn.email}')),
                 ),
               const Spacer(),
               ElevatedButton.icon(
-                icon: const Icon(Icons.badge_rounded, size: 14, color: Colors.white),
-                label: const Text('Full Profile', style: TextStyle(fontSize: 12, color: Colors.white)),
+                icon: const Icon(
+                  Icons.badge_rounded,
+                  size: 14,
+                  color: Colors.white,
+                ),
+                label: const Text(
+                  'Full Profile',
+                  style: TextStyle(fontSize: 12, color: Colors.white),
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF2563EB),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
                 onPressed: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => ConnectionDetailScreen(connectionId: conn.id),
+                      builder: (_) =>
+                          ConnectionDetailScreen(connectionId: conn.id),
                     ),
                   );
                 },
@@ -956,8 +1106,9 @@ class _SynapticWiresPainter extends CustomPainter {
 
       // Base glowing wire
       final wirePaint = Paint()
-        ..color = (isSelected ? const Color(0xFFF59E0B) : const Color(0xFF38BDF8))
-            .withValues(alpha: isSelected ? 0.8 : 0.45)
+        ..color =
+            (isSelected ? const Color(0xFFF59E0B) : const Color(0xFF38BDF8))
+                .withValues(alpha: isSelected ? 0.8 : 0.45)
         ..style = PaintingStyle.stroke
         ..strokeWidth = isSelected ? 3.0 : 1.8;
 
@@ -975,10 +1126,18 @@ class _SynapticWiresPainter extends CustomPainter {
             ..color = isSelected ? const Color(0xFFFDE68A) : Colors.white
             ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
 
-          canvas.drawCircle(tangent.position, isSelected ? 4.5 : 3.2, pulsePaint);
+          canvas.drawCircle(
+            tangent.position,
+            isSelected ? 4.5 : 3.2,
+            pulsePaint,
+          );
 
           final corePaint = Paint()..color = Colors.white;
-          canvas.drawCircle(tangent.position, isSelected ? 2.5 : 1.8, corePaint);
+          canvas.drawCircle(
+            tangent.position,
+            isSelected ? 2.5 : 1.8,
+            corePaint,
+          );
         }
       }
     }

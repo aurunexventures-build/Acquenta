@@ -4,7 +4,13 @@ import 'package:uuid/uuid.dart';
 import '../models/contact_card.dart';
 import '../models/card_link.dart';
 import '../providers/cards_provider.dart';
-import '../widgets/tag_chip.dart';
+import '../widgets/skills_tags_editor.dart';
+import '../widgets/social_links_editor.dart';
+import '../widgets/card_text_field.dart';
+import '../services/auth_service.dart';
+import '../services/sync_service.dart';
+import 'profile_questionnaire.dart';
+import '../widgets/photo_picker_tile.dart';
 
 class CardEditorScreen extends StatefulWidget {
   final ContactCard? initialCard;
@@ -17,7 +23,10 @@ class CardEditorScreen extends StatefulWidget {
 
 class _CardEditorScreenState extends State<CardEditorScreen> {
   final _formKey = GlobalKey<FormState>();
+  bool _saving = false;
+  final _fields = <String, TextEditingController>{};
 
+  String _avatarUrl = '';
   late String _title;
   late CardCategory _category;
   late String _fullName;
@@ -32,8 +41,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
   late bool _isDefault;
   late List<String> _techStack;
   late List<CardLink> _links;
-
-  final TextEditingController _tagController = TextEditingController();
+  final _socials = <SocialLinkDraft>[];
 
   static const List<String> _colorPalette = [
     '#2563EB', // Blue
@@ -50,6 +58,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
     super.initState();
     final card = widget.initialCard;
     if (card != null) {
+      _avatarUrl = card.avatarUrl;
       _title = card.title;
       _category = card.category;
       _fullName = card.fullName;
@@ -80,553 +89,392 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
       _techStack = [];
       _links = [];
     }
+    _socials.addAll(_links.map(SocialLinkDraft.fromLink));
   }
+
+  TextEditingController _controller(String key, String value) =>
+      _fields.putIfAbsent(key, () => TextEditingController(text: value));
 
   @override
   void dispose() {
-    _tagController.dispose();
+    for (final field in _fields.values) {
+      field.dispose();
+    }
+    for (final d in _socials) {
+      d.dispose();
+    }
     super.dispose();
   }
 
-  void _addTechTag() {
-    final text = _tagController.text.trim();
-    if (text.isNotEmpty && !_techStack.contains(text)) {
-      setState(() {
-        _techStack.add(text);
-        _tagController.clear();
-      });
-    }
-  }
-
-  void _showAddLinkDialog([CardLink? existingLink, int? index]) {
-    final titleController = TextEditingController(text: existingLink?.title ?? '');
-    final urlController = TextEditingController(text: existingLink?.url ?? '');
-    LinkType selectedType = existingLink?.type ?? LinkType.website;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Text(existingLink != null ? 'Edit Link' : 'Add Link / Social'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButtonFormField<LinkType>(
-                  initialValue: selectedType,
-                  decoration: const InputDecoration(labelText: 'Link Type'),
-                  items: LinkType.values.map((t) {
-                    return DropdownMenuItem(
-                      value: t,
-                      child: Text(t.name.toUpperCase()),
-                    );
-                  }).toList(),
-                  onChanged: (val) {
-                    if (val != null) {
-                      setDialogState(() {
-                        selectedType = val;
-                        if (titleController.text.isEmpty) {
-                          titleController.text = val.name.toUpperCase();
-                        }
-                      });
-                    }
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: titleController,
-                  decoration: const InputDecoration(
-                    labelText: 'Label / Title',
-                    hintText: 'e.g. GitHub, Portfolio, LinkedIn',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: urlController,
-                  decoration: const InputDecoration(
-                    labelText: 'URL or Handle',
-                    hintText: 'https://...',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final url = urlController.text.trim();
-                final title = titleController.text.trim();
-                if (url.isNotEmpty) {
-                  setState(() {
-                    final newLink = CardLink(
-                      id: existingLink?.id ?? const Uuid().v4(),
-                      title: title.isNotEmpty ? title : selectedType.name,
-                      url: url,
-                      type: selectedType,
-                    );
-                    if (index != null) {
-                      _links[index] = newLink;
-                    } else {
-                      _links.add(newLink);
-                    }
-                  });
-                  Navigator.pop(ctx);
-                }
-              },
-              child: const Text('Save Link'),
-            ),
-          ],
+  Future<void> _saveCard() async {
+    if (_saving) return;
+    if (_socials.any((d) => d.validate() != null)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Check your social usernames and website addresses.'),
         ),
-      ),
-    );
-  }
-
-  void _saveCard() {
+      );
+      return;
+    }
+    _links = SocialLinkDraft.validLinks(_socials);
+    _title = _controller('title', _title).text.trim();
+    _fullName = _controller('name', _fullName).text.trim();
+    _role = _controller('role', _role).text.trim();
+    _headline = _controller('pitch', _headline).text.trim();
+    _company = _controller('company', _company).text.trim();
+    _email = _controller('email', _email).text.trim();
+    _phone = _controller('phone', _phone).text.trim();
+    _location = _controller('location', _location).text.trim();
+    _bio = _controller('bio', _bio).text.trim();
+    if ([_title, _fullName, _role, _headline].any((v) => v.isEmpty)) {
+      _formKey.currentState!.validate();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Add a card name, your name, role and one-line pitch.'),
+        ),
+      );
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
     _formKey.currentState!.save();
 
     final provider = Provider.of<CardsProvider>(context, listen: false);
     final now = DateTime.now();
+    final scope = provider.storageService.scope;
+    setState(() => _saving = true);
+    try {
+      if (widget.initialCard != null) {
+        final updated = widget.initialCard!.copyWith(
+          title: _title,
+          avatarUrl: _avatarUrl,
+          category: _category,
+          fullName: _fullName,
+          headline: _headline,
+          company: _company,
+          role: _role,
+          email: _email,
+          phone: _phone,
+          location: _location,
+          bio: _bio,
+          themeColorHex: _themeColorHex,
+          isDefault: _isDefault,
+          techStack: _techStack,
+          links: _links,
+          updatedAt: now,
+        );
+        await provider.updateCard(updated);
+      } else {
+        final newCard = ContactCard(
+          id: const Uuid().v4(),
+          title: _title,
+          avatarUrl: _avatarUrl,
+          category: _category,
+          fullName: _fullName,
+          headline: _headline,
+          company: _company,
+          role: _role,
+          email: _email,
+          phone: _phone,
+          location: _location,
+          bio: _bio,
+          themeColorHex: _themeColorHex,
+          isDefault: _isDefault,
+          techStack: _techStack,
+          links: _links,
+          createdAt: now,
+          updatedAt: now,
+        );
+        await provider.addCard(newCard);
+      }
 
-    if (widget.initialCard != null) {
-      final updated = widget.initialCard!.copyWith(
-        title: _title,
-        category: _category,
-        fullName: _fullName,
-        headline: _headline,
-        company: _company,
-        role: _role,
-        email: _email,
-        phone: _phone,
-        location: _location,
-        bio: _bio,
-        themeColorHex: _themeColorHex,
-        isDefault: _isDefault,
-        techStack: _techStack,
-        links: _links,
-        updatedAt: now,
-      );
-      provider.updateCard(updated);
-    } else {
-      final newCard = ContactCard(
-        id: const Uuid().v4(),
-        title: _title,
-        category: _category,
-        fullName: _fullName,
-        headline: _headline,
-        company: _company,
-        role: _role,
-        email: _email,
-        phone: _phone,
-        location: _location,
-        bio: _bio,
-        themeColorHex: _themeColorHex,
-        isDefault: _isDefault,
-        techStack: _techStack,
-        links: _links,
-        createdAt: now,
-        updatedAt: now,
-      );
-      provider.addCard(newCard);
+      if (mounted && scope == provider.storageService.scope) {
+        Navigator.pop(context);
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not save. Your edits are still here.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
-
-    Navigator.pop(context);
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isEditing = widget.initialCard != null;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(isEditing ? 'Edit Visiting Card' : 'Create Visiting Card'),
-        actions: [
-          TextButton.icon(
-            icon: const Icon(Icons.check, color: Colors.blue),
-            label: const Text('Save', style: TextStyle(fontWeight: FontWeight.bold)),
-            onPressed: _saveCard,
-          ),
-        ],
-      ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            // Card Identifier & Category
-            Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Card Purpose & Type',
-                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            initialValue: _title,
-                            decoration: const InputDecoration(
-                              labelText: 'Card Title / Persona',
-                              hintText: 'e.g. Side Project Dev, Work Card',
-                              isDense: true,
-                              border: OutlineInputBorder(),
-                            ),
-                            validator: (v) => v == null || v.isEmpty ? 'Required' : null,
-                            onSaved: (v) => _title = v ?? '',
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        DropdownButton<CardCategory>(
-                          value: _category,
-                          items: CardCategory.values.map((cat) {
-                            return DropdownMenuItem(
-                              value: cat,
-                              child: Text(cat.displayName),
-                            );
-                          }).toList(),
-                          onChanged: (cat) {
-                            if (cat != null) setState(() => _category = cat);
-                          },
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    // Theme color row
-                    Row(
-                      children: [
-                        const Text('Accent Color:', style: TextStyle(fontSize: 13)),
-                        const SizedBox(width: 12),
-                        ..._colorPalette.map((hex) {
-                          final isSelected = _themeColorHex.toLowerCase() == hex.toLowerCase();
-                          final color = Color(int.parse('FF${hex.replaceAll('#', '')}', radix: 16));
-                          return GestureDetector(
-                            onTap: () => setState(() => _themeColorHex = hex),
-                            child: Container(
-                              margin: const EdgeInsets.symmetric(horizontal: 4),
-                              width: 26,
-                              height: 26,
-                              decoration: BoxDecoration(
-                                color: color,
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: isSelected ? Colors.black : Colors.transparent,
-                                  width: 2.5,
-                                ),
-                              ),
-                              child: isSelected
-                                  ? const Icon(Icons.check, size: 14, color: Colors.white)
-                                  : null,
-                            ),
-                          );
-                        }),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Set as Primary / Default Card'),
-                      subtitle: const Text('Primary card shown on app launch'),
-                      value: _isDefault,
-                      onChanged: (v) => setState(() => _isDefault = v),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Personal Information
-            Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Contact Information',
-                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      initialValue: _fullName,
-                      decoration: const InputDecoration(
-                        labelText: 'Full Name *',
-                        prefixIcon: Icon(Icons.person_outline),
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) => v == null || v.trim().isEmpty ? 'Please enter name' : null,
-                      onSaved: (v) => _fullName = v?.trim() ?? '',
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            initialValue: _role,
-                            decoration: const InputDecoration(
-                              labelText: 'Role / Job Title',
-                              hintText: 'e.g. Flutter Architect',
-                              isDense: true,
-                              border: OutlineInputBorder(),
-                            ),
-                            onSaved: (v) => _role = v?.trim() ?? '',
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextFormField(
-                            initialValue: _company,
-                            decoration: const InputDecoration(
-                              labelText: 'Company / Studio',
-                              hintText: 'e.g. AuruNex',
-                              isDense: true,
-                              border: OutlineInputBorder(),
-                            ),
-                            onSaved: (v) => _company = v?.trim() ?? '',
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      initialValue: _headline,
-                      decoration: const InputDecoration(
-                        labelText: 'Headline / Pitch',
-                        hintText: 'e.g. Building Android & Flutter apps, explore side projects',
-                        prefixIcon: Icon(Icons.bolt_outlined),
-                        border: OutlineInputBorder(),
-                      ),
-                      onSaved: (v) => _headline = v?.trim() ?? '',
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            initialValue: _email,
-                            keyboardType: TextInputType.emailAddress,
-                            decoration: const InputDecoration(
-                              labelText: 'Email',
-                              prefixIcon: Icon(Icons.email_outlined),
-                              isDense: true,
-                              border: OutlineInputBorder(),
-                            ),
-                            onSaved: (v) => _email = v?.trim() ?? '',
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextFormField(
-                            initialValue: _phone,
-                            keyboardType: TextInputType.phone,
-                            decoration: const InputDecoration(
-                              labelText: 'Phone',
-                              prefixIcon: Icon(Icons.phone_outlined),
-                              isDense: true,
-                              border: OutlineInputBorder(),
-                            ),
-                            onSaved: (v) => _phone = v?.trim() ?? '',
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      initialValue: _location,
-                      decoration: const InputDecoration(
-                        labelText: 'Location / City',
-                        prefixIcon: Icon(Icons.location_on_outlined),
-                        isDense: true,
-                        border: OutlineInputBorder(),
-                      ),
-                      onSaved: (v) => _location = v?.trim() ?? '',
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      initialValue: _bio,
-                      maxLines: 3,
-                      decoration: const InputDecoration(
-                        labelText: 'Bio & What I Do',
-                        hintText: 'Brief summary of what you are working on or open to...',
-                        border: OutlineInputBorder(),
-                      ),
-                      onSaved: (v) => _bio = v?.trim() ?? '',
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Tech Stack & Skills (Crucial for Context Recall)
-            Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.terminal_rounded, size: 20, color: Colors.blue),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Tech Stack & Skills',
-                          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Crucial for memory recall: enables people to search and find you by technology!',
-                      style: TextStyle(fontSize: 12, color: theme.hintColor),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _tagController,
-                            decoration: const InputDecoration(
-                              hintText: 'Add skill (e.g. Flutter, Android, AI Agents)',
-                              isDense: true,
-                              border: OutlineInputBorder(),
-                            ),
-                            onSubmitted: (_) => _addTechTag(),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: _addTechTag,
-                          child: const Text('Add'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    if (_techStack.isEmpty)
-                      Text(
-                        'No tech stack added yet. Add tags to be discoverable.',
-                        style: TextStyle(fontSize: 12, color: theme.hintColor, fontStyle: FontStyle.italic),
-                      )
-                    else
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: _techStack.map((t) {
-                          return TagChip(
-                            label: t,
-                            onDeleted: () {
-                              setState(() => _techStack.remove(t));
-                            },
-                          );
-                        }).toList(),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Links & Social Profiles
-            Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Links & Socials (${_links.length})',
-                          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                        TextButton.icon(
-                          icon: const Icon(Icons.add, size: 18),
-                          label: const Text('Add Link'),
-                          onPressed: () => _showAddLinkDialog(),
-                        ),
-                      ],
-                    ),
-                    if (_links.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Text(
-                          'No links yet. Add GitHub, LinkedIn, Website, or Portfolio.',
-                          style: TextStyle(fontSize: 12, color: theme.hintColor, fontStyle: FontStyle.italic),
-                        ),
-                      )
-                    else
-                      ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _links.length,
-                        separatorBuilder: (context, index) => const Divider(height: 1),
-                        itemBuilder: (ctx, i) {
-                          final link = _links[i];
-                          return ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: CircleAvatar(
-                              radius: 18,
-                              backgroundColor: Colors.blue.withValues(alpha: 0.1),
-                              child: Icon(link.defaultIcon, size: 18, color: Colors.blue),
-                            ),
-                            title: Text(link.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                            subtitle: Text(link.url, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.edit, size: 18),
-                                  onPressed: () => _showAddLinkDialog(link, i),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
-                                  onPressed: () => setState(() => _links.removeAt(i)),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-              onPressed: _saveCard,
-              child: Text(
-                isEditing ? 'Save Changes' : 'Create Card',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-            ),
-            const SizedBox(height: 40),
-          ],
-        ),
+  Future<void> _draftProfile() async {
+    final auth = context.read<AuthService?>();
+    final storage = context.read<CardsProvider>().storageService;
+    final scope = storage.scope;
+    final role = _controller('role', _role),
+        pitch = _controller('pitch', _headline);
+    final bio = _controller('bio', _bio);
+    final before = '${role.text}|${pitch.text}|${bio.text}';
+    final draft = await showDialog<Map<String, dynamic>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ProfileQuestionnaire(
+        initialText: [
+          role.text,
+          pitch.text,
+          bio.text,
+        ].where((s) => s.trim().isNotEmpty).join('. '),
+        purpose: _controller('title', _title).text,
+        generate: (answers) async {
+          if (auth == null) throw StateError('Sign in to use AI.');
+          final service = SyncService();
+          try {
+            return await service.request(
+              '/api/v1/profile/draft',
+              answers,
+              auth,
+            );
+          } finally {
+            service.close();
+          }
+        },
       ),
     );
+    if (!mounted ||
+        draft == null ||
+        scope != storage.scope ||
+        before != '${role.text}|${pitch.text}|${bio.text}') {
+      return;
+    }
+    setState(() {
+      role.text = draft['role'] as String;
+      pitch.text = draft['pitch'] as String;
+      _techStack = (draft['skills'] as List).cast<String>().toList();
+    });
   }
+
+  Widget _field(
+    String key,
+    String label,
+    String value,
+    ValueChanged<String> save, {
+    String hint = '',
+    bool required = false,
+    int lines = 1,
+    TextInputType? keyboard,
+  }) => CardTextField(
+    key: ValueKey('edit-$key'),
+    controller: _controller(key, value),
+    label: label,
+    hint: hint,
+    required: required,
+    voiceEnabled: key == 'pitch',
+    maxLines: lines,
+    keyboardType: keyboard,
+    onSaved: (v) => save(v?.trim() ?? ''),
+  );
+
+  Widget _section(String title, List<Widget> children) => Padding(
+    padding: const EdgeInsets.only(bottom: 20),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          title,
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        ...children,
+      ],
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: Text(widget.initialCard == null ? 'Create card' : 'Edit card'),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : _saveCard,
+          child: Text(_saving ? 'Saving…' : 'Save'),
+        ),
+      ],
+    ),
+    body: Form(
+      key: _formKey,
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 640),
+          child: ListView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.all(20),
+            children: [
+              _section('1. What is this card for?', [
+                _field(
+                  'title',
+                  'Card name *',
+                  _title,
+                  (v) => _title = v,
+                  hint: 'Work, personal, a project or an event',
+                  required: true,
+                ),
+                DropdownButtonFormField<CardCategory>(
+                  initialValue: _category,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Card purpose',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: CardCategory.values
+                      .map(
+                        (c) => DropdownMenuItem(
+                          value: c,
+                          child: Text(c.displayName),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) setState(() => _category = v);
+                  },
+                ),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Make this my primary card'),
+                  subtitle: const Text('Show this card first in my wallet.'),
+                  value: _isDefault,
+                  onChanged: (v) => setState(() => _isDefault = v),
+                ),
+              ]),
+              _section('2. About you', [
+                OutlinedButton.icon(
+                  onPressed: _draftProfile,
+                  icon: const Icon(Icons.auto_awesome_outlined),
+                  label: const Text('Describe yourself once · draft with AI'),
+                ),
+                _field(
+                  'name',
+                  'Full Name *',
+                  _fullName,
+                  (v) => _fullName = v,
+                  required: true,
+                ),
+                _field(
+                  'role',
+                  'Role / Job Title *',
+                  _role,
+                  (v) => _role = v,
+                  required: true,
+                  hint: 'Teacher, designer, consultant…',
+                ),
+                _field(
+                  'company',
+                  'Company / Studio',
+                  _company,
+                  (v) => _company = v,
+                ),
+                _field(
+                  'pitch',
+                  'One-line pitch *',
+                  _headline,
+                  (v) => _headline = v,
+                  required: true,
+                  lines: 2,
+                  hint: 'What you do and who you help',
+                ),
+                _field(
+                  'bio',
+                  'More about you (optional)',
+                  _bio,
+                  (v) => _bio = v,
+                  lines: 3,
+                ),
+              ]),
+              _section('3. Skills & tags', [
+                SkillsTagsEditor(
+                  skills: _techStack,
+                  role: _controller('role', _role).text,
+                  pitch: _controller('pitch', _headline).text,
+                  onChanged: (tags) => setState(() => _techStack = tags),
+                ),
+              ]),
+              _section('4. Contact details', [
+                _field(
+                  'email',
+                  'Email',
+                  _email,
+                  (v) => _email = v,
+                  keyboard: TextInputType.emailAddress,
+                ),
+                _field(
+                  'phone',
+                  'Phone',
+                  _phone,
+                  (v) => _phone = v,
+                  keyboard: TextInputType.phone,
+                ),
+                _field(
+                  'location',
+                  'Location / City',
+                  _location,
+                  (v) => _location = v,
+                ),
+              ]),
+              _section('Links & socials', [
+                SocialLinksEditor(
+                  drafts: _socials,
+                  onChanged: () => setState(() {}),
+                ),
+              ]),
+              ExpansionTile(
+                title: const Text('Photo & card colour'),
+                children: [
+                  PhotoPickerTile(
+                    photo: _avatarUrl,
+                    name: _controller('name', _fullName).text,
+                    isPortrait: true,
+                    onChanged: (v) => setState(() => _avatarUrl = v),
+                  ),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _colorPalette
+                        .map(
+                          (hex) => Semantics(
+                            label: 'Card colour $hex',
+                            selected: _themeColorHex == hex,
+                            child: IconButton(
+                              tooltip: 'Card colour $hex',
+                              style: IconButton.styleFrom(
+                                backgroundColor: Color(
+                                  int.parse('FF${hex.substring(1)}', radix: 16),
+                                ),
+                              ),
+                              onPressed: () =>
+                                  setState(() => _themeColorHex = hex),
+                              icon: Icon(
+                                _themeColorHex == hex
+                                    ? Icons.check
+                                    : Icons.circle,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+              const SizedBox(height: 20),
+              FilledButton(
+                onPressed: _saving ? null : _saveCard,
+                child: Text(_saving ? 'Saving…' : 'Save changes'),
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }

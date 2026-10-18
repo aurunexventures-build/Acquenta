@@ -4,12 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/saved_connection.dart';
 import '../screens/connection_detail_screen.dart';
 
-enum MeshNodeType {
-  person,
-  event,
-  skill,
-  vibe,
-}
+enum MeshNodeType { person, event, skill, vibe }
 
 class MeshNode {
   final String id;
@@ -71,7 +66,8 @@ class MemoryMeshGraph extends StatefulWidget {
   State<MemoryMeshGraph> createState() => _MemoryMeshGraphState();
 }
 
-class _MemoryMeshGraphState extends State<MemoryMeshGraph> with SingleTickerProviderStateMixin {
+class _MemoryMeshGraphState extends State<MemoryMeshGraph>
+    with SingleTickerProviderStateMixin {
   late final TransformationController _transformController;
   late final AnimationController _pulseController;
 
@@ -143,7 +139,9 @@ class _MemoryMeshGraphState extends State<MemoryMeshGraph> with SingleTickerProv
     // 1. Group connections by event
     final eventMap = <String, List<SavedConnection>>{};
     for (final c in conns) {
-      final ev = c.eventContext.eventName.trim().isNotEmpty ? c.eventContext.eventName.trim() : 'General Networking';
+      final ev = c.eventContext.eventName.trim().isNotEmpty
+          ? c.eventContext.eventName.trim()
+          : 'General Networking';
       eventMap.putIfAbsent(ev, () => []).add(c);
     }
 
@@ -225,12 +223,14 @@ class _MemoryMeshGraphState extends State<MemoryMeshGraph> with SingleTickerProv
         nodes.add(pNode);
 
         // Edge between Event and Person
-        edges.add(MeshEdge(
-          sourceId: evNode.id,
-          targetId: pNodeId,
-          color: const Color(0xFFF59E0B).withValues(alpha: 0.6),
-          width: 2.0,
-        ));
+        edges.add(
+          MeshEdge(
+            sourceId: evNode.id,
+            targetId: pNodeId,
+            color: const Color(0xFFF59E0B).withValues(alpha: 0.6),
+            width: 2.0,
+          ),
+        );
 
         // Create Vibe Nodes radiating outward from the person
         final vibes = c.vibeTags;
@@ -257,12 +257,14 @@ class _MemoryMeshGraphState extends State<MemoryMeshGraph> with SingleTickerProv
           vibeNodes[vNodeId] = vNode;
           nodes.add(vNode);
 
-          edges.add(MeshEdge(
-            sourceId: pNodeId,
-            targetId: vNodeId,
-            color: const Color(0xFFA855F7).withValues(alpha: 0.5),
-            width: 1.2,
-          ));
+          edges.add(
+            MeshEdge(
+              sourceId: pNodeId,
+              targetId: vNodeId,
+              color: const Color(0xFFA855F7).withValues(alpha: 0.5),
+              width: 1.2,
+            ),
+          );
         }
 
         // Skills (Tech Stack)
@@ -290,12 +292,14 @@ class _MemoryMeshGraphState extends State<MemoryMeshGraph> with SingleTickerProv
           skillNodes[sNodeId] = sNode;
           nodes.add(sNode);
 
-          edges.add(MeshEdge(
-            sourceId: pNodeId,
-            targetId: sNodeId,
-            color: const Color(0xFF06B6D4).withValues(alpha: 0.4),
-            width: 1.2,
-          ));
+          edges.add(
+            MeshEdge(
+              sourceId: pNodeId,
+              targetId: sNodeId,
+              color: const Color(0xFF06B6D4).withValues(alpha: 0.4),
+              width: 1.2,
+            ),
+          );
         }
       }
     }
@@ -316,9 +320,13 @@ class _MemoryMeshGraphState extends State<MemoryMeshGraph> with SingleTickerProv
             (c) => c.id == node.connectionId,
             orElse: () => widget.connections.first,
           );
-        } else if (node.type == MeshNodeType.vibe || node.type == MeshNodeType.skill) {
+        } else if (node.type == MeshNodeType.vibe ||
+            node.type == MeshNodeType.skill) {
           final pNode = _nodes.firstWhere(
-            (n) => n.type == MeshNodeType.person && (n.connectedNodeIds.contains(node.id) || node.connectedNodeIds.contains(n.id)),
+            (n) =>
+                n.type == MeshNodeType.person &&
+                (n.connectedNodeIds.contains(node.id) ||
+                    node.connectedNodeIds.contains(n.id)),
             orElse: () => node,
           );
           if (pNode.connectionId != null) {
@@ -343,7 +351,8 @@ class _MemoryMeshGraphState extends State<MemoryMeshGraph> with SingleTickerProv
   bool _isNodeHighlighted(MeshNode node) {
     final q = widget.searchQuery.trim().toLowerCase();
     if (q.isNotEmpty) {
-      if (node.label.toLowerCase().contains(q) || node.sublabel.toLowerCase().contains(q)) {
+      if (node.label.toLowerCase().contains(q) ||
+          node.sublabel.toLowerCase().contains(q)) {
         return true;
       }
       if (node.connectionId != null) {
@@ -359,26 +368,47 @@ class _MemoryMeshGraphState extends State<MemoryMeshGraph> with SingleTickerProv
       }
     }
 
-    if (widget.selectedEventFilter != null && widget.selectedEventFilter!.isNotEmpty) {
-      if (node.type == MeshNodeType.event && node.label == widget.selectedEventFilter) return true;
+    if (widget.selectedEventFilter != null &&
+        widget.selectedEventFilter!.isNotEmpty) {
+      if (node.type == MeshNodeType.event &&
+          node.label == widget.selectedEventFilter) {
+        return true;
+      }
       if (node.connectionId != null) {
-        final c = widget.connections.firstWhere((item) => item.id == node.connectionId, orElse: () => widget.connections.first);
+        final c = widget.connections.firstWhere(
+          (item) => item.id == node.connectionId,
+          orElse: () => widget.connections.first,
+        );
         if (c.eventContext.eventName == widget.selectedEventFilter) return true;
       }
     }
 
-    if (widget.selectedTechFilter != null && widget.selectedTechFilter!.isNotEmpty) {
-      if (node.type == MeshNodeType.skill && node.label.toLowerCase() == widget.selectedTechFilter!.toLowerCase()) return true;
+    if (widget.selectedTechFilter != null &&
+        widget.selectedTechFilter!.isNotEmpty) {
+      if (node.type == MeshNodeType.skill &&
+          node.label.toLowerCase() ==
+              widget.selectedTechFilter!.toLowerCase()) {
+        return true;
+      }
     }
 
-    if (widget.selectedVibeFilter != null && widget.selectedVibeFilter!.isNotEmpty) {
-      if (node.type == MeshNodeType.vibe && node.label.toLowerCase() == widget.selectedVibeFilter!.toLowerCase()) return true;
+    if (widget.selectedVibeFilter != null &&
+        widget.selectedVibeFilter!.isNotEmpty) {
+      if (node.type == MeshNodeType.vibe &&
+          node.label.toLowerCase() ==
+              widget.selectedVibeFilter!.toLowerCase()) {
+        return true;
+      }
     }
 
     if (_selectedNodeId != null) {
       if (node.id == _selectedNodeId) return true;
-      final selectedNode = _nodes.firstWhere((n) => n.id == _selectedNodeId, orElse: () => node);
-      if (selectedNode.connectedNodeIds.contains(node.id) || node.connectedNodeIds.contains(selectedNode.id)) {
+      final selectedNode = _nodes.firstWhere(
+        (n) => n.id == _selectedNodeId,
+        orElse: () => node,
+      );
+      if (selectedNode.connectedNodeIds.contains(node.id) ||
+          node.connectedNodeIds.contains(selectedNode.id)) {
         return true;
       }
       return false;
@@ -391,17 +421,21 @@ class _MemoryMeshGraphState extends State<MemoryMeshGraph> with SingleTickerProv
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (!_hasInitializedTransform && constraints.maxWidth > 0 && constraints.maxHeight > 0) {
+        if (!_hasInitializedTransform &&
+            constraints.maxWidth > 0 &&
+            constraints.maxHeight > 0) {
           _hasInitializedTransform = true;
-          final scale = math.min(
-            constraints.maxWidth / _canvasWidth,
-            constraints.maxHeight / _canvasHeight,
-          ).clamp(0.55, 1.15);
+          final scale = math
+              .min(
+                constraints.maxWidth / _canvasWidth,
+                constraints.maxHeight / _canvasHeight,
+              )
+              .clamp(0.55, 1.15);
           final tx = (constraints.maxWidth - _canvasWidth * scale) / 2;
           final ty = (constraints.maxHeight - _canvasHeight * scale) / 2;
           _transformController.value = Matrix4.identity()
-            ..translate(tx, ty)
-            ..scale(scale);
+            ..translateByDouble(tx, ty, 0.0, 1.0)
+            ..scaleByDouble(scale, scale, scale, 1.0);
         }
 
         return Stack(
@@ -417,189 +451,230 @@ class _MemoryMeshGraphState extends State<MemoryMeshGraph> with SingleTickerProv
                   width: _canvasWidth,
                   height: _canvasHeight,
                   child: AnimatedBuilder(
-                animation: _pulseController,
-                builder: (context, _) {
-                  return Stack(
-                    children: [
-                      // Canvas with edges and matrix backdrop
-                      CustomPaint(
-                        size: const Size(_canvasWidth, _canvasHeight),
-                        painter: _MeshPainter(
-                          nodes: _nodes,
-                          edges: _edges,
-                          selectedNodeId: _selectedNodeId,
-                          pulseValue: _pulseController.value,
-                          searchActive: widget.searchQuery.isNotEmpty ||
-                              widget.selectedEventFilter != null ||
-                              widget.selectedTechFilter != null ||
-                              widget.selectedVibeFilter != null,
-                          isNodeHighlighted: _isNodeHighlighted,
-                        ),
-                      ),
-
-                      // Interactive Node widgets positioned on top of the canvas
-                      ..._nodes.map((node) {
-                        final isSelected = node.id == _selectedNodeId;
-                        final isHighlighted = _isNodeHighlighted(node);
-                        final hasAnyFocus = _selectedNodeId != null ||
-                            widget.searchQuery.isNotEmpty ||
-                            widget.selectedEventFilter != null ||
-                            widget.selectedTechFilter != null ||
-                            widget.selectedVibeFilter != null;
-
-                        final double opacity = (!hasAnyFocus || isHighlighted || isSelected) ? 1.0 : 0.25;
-
-                        return Positioned(
-                          left: node.position.dx - 45,
-                          top: node.position.dy - 35,
-                          child: Opacity(
-                            opacity: opacity,
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () => _onTapNode(node),
-                              onTapUp: (_) => _onTapNode(node),
-                              child: _buildNodeWidget(node, isSelected, isHighlighted),
+                    animation: _pulseController,
+                    builder: (context, _) {
+                      return Stack(
+                        children: [
+                          // Canvas with edges and matrix backdrop
+                          CustomPaint(
+                            size: const Size(_canvasWidth, _canvasHeight),
+                            painter: _MeshPainter(
+                              nodes: _nodes,
+                              edges: _edges,
+                              selectedNodeId: _selectedNodeId,
+                              pulseValue: _pulseController.value,
+                              searchActive:
+                                  widget.searchQuery.isNotEmpty ||
+                                  widget.selectedEventFilter != null ||
+                                  widget.selectedTechFilter != null ||
+                                  widget.selectedVibeFilter != null,
+                              isNodeHighlighted: _isNodeHighlighted,
                             ),
+                          ),
+
+                          // Interactive Node widgets positioned on top of the canvas
+                          ..._nodes.map((node) {
+                            final isSelected = node.id == _selectedNodeId;
+                            final isHighlighted = _isNodeHighlighted(node);
+                            final hasAnyFocus =
+                                _selectedNodeId != null ||
+                                widget.searchQuery.isNotEmpty ||
+                                widget.selectedEventFilter != null ||
+                                widget.selectedTechFilter != null ||
+                                widget.selectedVibeFilter != null;
+
+                            final double opacity =
+                                (!hasAnyFocus || isHighlighted || isSelected)
+                                ? 1.0
+                                : 0.25;
+
+                            return Positioned(
+                              left: node.position.dx - 45,
+                              top: node.position.dy - 35,
+                              child: Opacity(
+                                opacity: opacity,
+                                child: GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: () => _onTapNode(node),
+                                  onTapUp: (_) => _onTapNode(node),
+                                  child: _buildNodeWidget(
+                                    node,
+                                    isSelected,
+                                    isHighlighted,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+
+            // Mesh Legend Overlay
+            Positioned(
+              top: 12,
+              right: 16,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF131720).withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white12),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black45,
+                      blurRadius: 10,
+                      offset: Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildLegendItem(const Color(0xFFF59E0B), 'Event Cluster'),
+                    const SizedBox(height: 4),
+                    _buildLegendItem(const Color(0xFF3B82F6), 'Person'),
+                    const SizedBox(height: 4),
+                    _buildLegendItem(
+                      const Color(0xFF06B6D4),
+                      'Skill / Superpower',
+                    ),
+                    const SizedBox(height: 4),
+                    _buildLegendItem(
+                      const Color(0xFFA855F7),
+                      'Future Self Vibe',
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Quick Controls Overlay (Reset View, Zoom)
+            Positioned(
+              bottom: _inspectedConnection != null ? 240 : 20,
+              right: 16,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildFloatingActionBtn(
+                    icon: Icons.filter_center_focus_rounded,
+                    tooltip: 'Center Mesh',
+                    onPressed: () {
+                      final scale = math
+                          .min(
+                            constraints.maxWidth / _canvasWidth,
+                            constraints.maxHeight / _canvasHeight,
+                          )
+                          .clamp(0.55, 1.15);
+                      final tx =
+                          (constraints.maxWidth - _canvasWidth * scale) / 2;
+                      final ty =
+                          (constraints.maxHeight - _canvasHeight * scale) / 2;
+                      _transformController.value = Matrix4.identity()
+                        ..translateByDouble(tx, ty, 0.0, 1.0)
+                        ..scaleByDouble(scale, scale, scale, 1.0);
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  _buildFloatingActionBtn(
+                    icon: Icons.zoom_in_rounded,
+                    tooltip: 'Zoom In',
+                    onPressed: () {
+                      final matrix = _transformController.value.clone();
+                      matrix.scaleByDouble(1.2, 1.2, 1.2, 1.0);
+                      _transformController.value = matrix;
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  _buildFloatingActionBtn(
+                    icon: Icons.zoom_out_rounded,
+                    tooltip: 'Zoom Out',
+                    onPressed: () {
+                      final matrix = _transformController.value.clone();
+                      matrix.scaleByDouble(0.8, 0.8, 0.8, 1.0);
+                      _transformController.value = matrix;
+                    },
+                  ),
+                ],
+              ),
+            ),
+
+            // Quick Person Focus Chips (when inspector sheet is closed)
+            if (_inspectedConnection == null && widget.connections.isNotEmpty)
+              Positioned(
+                left: 16,
+                right: 70,
+                bottom: 16,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      ...widget.connections.take(4).map((conn) {
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ActionChip(
+                            avatar: CircleAvatar(
+                              radius: 10,
+                              backgroundColor: const Color(0xFF3B82F6),
+                              child: Text(
+                                conn.fullName.isNotEmpty
+                                    ? conn.fullName[0]
+                                    : '',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            label: Text(
+                              conn.fullName,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                            backgroundColor: const Color(
+                              0xFF161B22,
+                            ).withValues(alpha: 0.9),
+                            side: const BorderSide(color: Colors.white24),
+                            onPressed: () {
+                              final node = _nodes.firstWhere(
+                                (n) => n.connectionId == conn.id,
+                                orElse: () => _nodes.first,
+                              );
+                              _onTapNode(node);
+                            },
                           ),
                         );
                       }),
                     ],
-                  );
-                },
+                  ),
+                ),
               ),
-            ),
-          ),
-        ),
 
-        // Mesh Legend Overlay
-        Positioned(
-          top: 12,
-          right: 16,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF131720).withValues(alpha: 0.85),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white12),
-              boxShadow: const [
-                BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 4)),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildLegendItem(const Color(0xFFF59E0B), 'Event Cluster'),
-                const SizedBox(height: 4),
-                _buildLegendItem(const Color(0xFF3B82F6), 'Person'),
-                const SizedBox(height: 4),
-                _buildLegendItem(const Color(0xFF06B6D4), 'Skill / Superpower'),
-                const SizedBox(height: 4),
-                _buildLegendItem(const Color(0xFFA855F7), 'Future Self Vibe'),
-              ],
-            ),
-          ),
-        ),
-
-        // Quick Controls Overlay (Reset View, Zoom)
-        Positioned(
-          bottom: _inspectedConnection != null ? 240 : 20,
-          right: 16,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildFloatingActionBtn(
-                icon: Icons.filter_center_focus_rounded,
-                tooltip: 'Center Mesh',
-                onPressed: () {
-                  final scale = math.min(
-                    constraints.maxWidth / _canvasWidth,
-                    constraints.maxHeight / _canvasHeight,
-                  ).clamp(0.55, 1.15);
-                  final tx = (constraints.maxWidth - _canvasWidth * scale) / 2;
-                  final ty = (constraints.maxHeight - _canvasHeight * scale) / 2;
-                  _transformController.value = Matrix4.identity()
-                    ..translate(tx, ty)
-                    ..scale(scale);
-                },
+            // Glassmorphic Inspector Sheet for Selected Person
+            if (_inspectedConnection != null)
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 16,
+                child: _buildInspectedPersonSheet(
+                  context,
+                  _inspectedConnection!,
+                ),
               ),
-              const SizedBox(height: 8),
-              _buildFloatingActionBtn(
-                icon: Icons.zoom_in_rounded,
-                tooltip: 'Zoom In',
-                onPressed: () {
-                  final matrix = _transformController.value.clone();
-                  matrix.scale(1.2);
-                  _transformController.value = matrix;
-                },
-              ),
-              const SizedBox(height: 8),
-              _buildFloatingActionBtn(
-                icon: Icons.zoom_out_rounded,
-                tooltip: 'Zoom Out',
-                onPressed: () {
-                  final matrix = _transformController.value.clone();
-                  matrix.scale(0.8);
-                  _transformController.value = matrix;
-                },
-              ),
-            ],
-          ),
-        ),
-
-        // Quick Person Focus Chips (when inspector sheet is closed)
-        if (_inspectedConnection == null && widget.connections.isNotEmpty)
-          Positioned(
-            left: 16,
-            right: 70,
-            bottom: 16,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  ...widget.connections.take(4).map((conn) {
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ActionChip(
-                        avatar: CircleAvatar(
-                          radius: 10,
-                          backgroundColor: const Color(0xFF3B82F6),
-                          child: Text(
-                            conn.fullName.isNotEmpty ? conn.fullName[0] : '',
-                            style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                        label: Text(
-                          conn.fullName,
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white),
-                        ),
-                        backgroundColor: const Color(0xFF161B22).withValues(alpha: 0.9),
-                        side: const BorderSide(color: Colors.white24),
-                        onPressed: () {
-                          final node = _nodes.firstWhere(
-                            (n) => n.connectionId == conn.id,
-                            orElse: () => _nodes.first,
-                          );
-                          _onTapNode(node);
-                        },
-                      ),
-                    );
-                  }),
-                ],
-              ),
-            ),
-          ),
-
-        // Glassmorphic Inspector Sheet for Selected Person
-        if (_inspectedConnection != null)
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: 16,
-            child: _buildInspectedPersonSheet(context, _inspectedConnection!),
-          ),
-      ],
-    );
+          ],
+        );
       },
     );
   }
@@ -618,10 +693,7 @@ class _MemoryMeshGraphState extends State<MemoryMeshGraph> with SingleTickerProv
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [
-                    node.color,
-                    node.color.withValues(alpha: 0.7),
-                  ],
+                  colors: [node.color, node.color.withValues(alpha: 0.7)],
                 ),
                 border: Border.all(
                   color: isSelected
@@ -631,7 +703,9 @@ class _MemoryMeshGraphState extends State<MemoryMeshGraph> with SingleTickerProv
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: (isSelected ? Colors.amber : node.color).withValues(alpha: 0.5),
+                    color: (isSelected ? Colors.amber : node.color).withValues(
+                      alpha: 0.5,
+                    ),
                     blurRadius: isSelected ? 18 : 8,
                     spreadRadius: isSelected ? 2 : 0,
                   ),
@@ -639,7 +713,12 @@ class _MemoryMeshGraphState extends State<MemoryMeshGraph> with SingleTickerProv
               ),
               child: Center(
                 child: Text(
-                  node.label.trim().split(' ').map((n) => n.isNotEmpty ? n[0] : '').take(2).join(),
+                  node.label
+                      .trim()
+                      .split(' ')
+                      .map((n) => n.isNotEmpty ? n[0] : '')
+                      .take(2)
+                      .join(),
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w800,
@@ -680,7 +759,9 @@ class _MemoryMeshGraphState extends State<MemoryMeshGraph> with SingleTickerProv
                 color: const Color(0xFF1E222D),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: isSelected ? Colors.amberAccent : node.color.withValues(alpha: 0.6),
+                  color: isSelected
+                      ? Colors.amberAccent
+                      : node.color.withValues(alpha: 0.6),
                   width: isSelected ? 2.5 : 1.5,
                 ),
                 boxShadow: [
@@ -724,7 +805,9 @@ class _MemoryMeshGraphState extends State<MemoryMeshGraph> with SingleTickerProv
             color: const Color(0xFF1E1030),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: isSelected ? Colors.amberAccent : node.color.withValues(alpha: 0.6),
+              color: isSelected
+                  ? Colors.amberAccent
+                  : node.color.withValues(alpha: 0.6),
               width: isSelected ? 2 : 1,
             ),
             boxShadow: [
@@ -758,7 +841,9 @@ class _MemoryMeshGraphState extends State<MemoryMeshGraph> with SingleTickerProv
             color: const Color(0xFF0C242C),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: isSelected ? Colors.amberAccent : node.color.withValues(alpha: 0.6),
+              color: isSelected
+                  ? Colors.amberAccent
+                  : node.color.withValues(alpha: 0.6),
               width: isSelected ? 2 : 1,
             ),
           ),
@@ -788,15 +873,16 @@ class _MemoryMeshGraphState extends State<MemoryMeshGraph> with SingleTickerProv
         Container(
           width: 8,
           height: 8,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 6),
         Text(
           label,
-          style: const TextStyle(fontSize: 10, color: Colors.white70, fontWeight: FontWeight.w500),
+          style: const TextStyle(
+            fontSize: 10,
+            color: Colors.white70,
+            fontWeight: FontWeight.w500,
+          ),
         ),
       ],
     );
@@ -828,12 +914,18 @@ class _MemoryMeshGraphState extends State<MemoryMeshGraph> with SingleTickerProv
     );
   }
 
-  Widget _buildInspectedPersonSheet(BuildContext context, SavedConnection conn) {
+  Widget _buildInspectedPersonSheet(
+    BuildContext context,
+    SavedConnection conn,
+  ) {
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF131720),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFFBBF24).withValues(alpha: 0.4), width: 1.2),
+        border: Border.all(
+          color: const Color(0xFFFBBF24).withValues(alpha: 0.4),
+          width: 1.2,
+        ),
         boxShadow: const [
           BoxShadow(
             color: Colors.black87,
@@ -854,8 +946,17 @@ class _MemoryMeshGraphState extends State<MemoryMeshGraph> with SingleTickerProv
                 radius: 20,
                 backgroundColor: const Color(0xFF2563EB),
                 child: Text(
-                  conn.fullName.trim().split(' ').map((n) => n.isNotEmpty ? n[0] : '').take(2).join(),
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 14),
+                  conn.fullName
+                      .trim()
+                      .split(' ')
+                      .map((n) => n.isNotEmpty ? n[0] : '')
+                      .take(2)
+                      .join(),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    fontSize: 14,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -865,11 +966,22 @@ class _MemoryMeshGraphState extends State<MemoryMeshGraph> with SingleTickerProv
                   children: [
                     Text(
                       conn.fullName,
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
                     Text(
-                      conn.role.isNotEmpty ? (conn.company.isNotEmpty ? '${conn.role} · ${conn.company}' : conn.role) : 'Connection',
-                      style: const TextStyle(fontSize: 12, color: Color(0xFF93C5FD)),
+                      conn.role.isNotEmpty
+                          ? (conn.company.isNotEmpty
+                                ? '${conn.role} · ${conn.company}'
+                                : conn.role)
+                          : 'Connection',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF93C5FD),
+                      ),
                     ),
                   ],
                 ),
@@ -894,14 +1006,20 @@ class _MemoryMeshGraphState extends State<MemoryMeshGraph> with SingleTickerProv
               decoration: BoxDecoration(
                 color: const Color(0xFFD97706).withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFFBBF24).withValues(alpha: 0.3)),
+                border: Border.all(
+                  color: const Color(0xFFFBBF24).withValues(alpha: 0.3),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Row(
                     children: [
-                      Icon(Icons.mail_outline_rounded, size: 12, color: Color(0xFFFBBF24)),
+                      Icon(
+                        Icons.mail_outline_rounded,
+                        size: 12,
+                        color: Color(0xFFFBBF24),
+                      ),
                       SizedBox(width: 4),
                       Text(
                         'MESSAGE TO FUTURE SELF',
@@ -939,15 +1057,24 @@ class _MemoryMeshGraphState extends State<MemoryMeshGraph> with SingleTickerProv
               runSpacing: 6,
               children: conn.vibeTags.map((v) {
                 return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFF8B5CF6).withValues(alpha: 0.18),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFA78BFA).withValues(alpha: 0.35)),
+                    border: Border.all(
+                      color: const Color(0xFFA78BFA).withValues(alpha: 0.35),
+                    ),
                   ),
                   child: Text(
                     '✨ $v',
-                    style: const TextStyle(fontSize: 10, color: Color(0xFFDDD6FE), fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Color(0xFFDDD6FE),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 );
               }).toList(),
@@ -965,31 +1092,62 @@ class _MemoryMeshGraphState extends State<MemoryMeshGraph> with SingleTickerProv
               if (conn.phone.isNotEmpty)
                 TextButton.icon(
                   onPressed: () => launchUrl(Uri.parse('tel:${conn.phone}')),
-                  icon: const Icon(Icons.phone_rounded, size: 15, color: Color(0xFF60A5FA)),
-                  label: const Text('Call', style: TextStyle(color: Color(0xFF60A5FA), fontSize: 12)),
+                  icon: const Icon(
+                    Icons.phone_rounded,
+                    size: 15,
+                    color: Color(0xFF60A5FA),
+                  ),
+                  label: const Text(
+                    'Call',
+                    style: TextStyle(color: Color(0xFF60A5FA), fontSize: 12),
+                  ),
                 ),
               if (conn.email.isNotEmpty)
                 TextButton.icon(
                   onPressed: () => launchUrl(Uri.parse('mailto:${conn.email}')),
-                  icon: const Icon(Icons.email_rounded, size: 15, color: Color(0xFF34D399)),
-                  label: const Text('Email', style: TextStyle(color: Color(0xFF34D399), fontSize: 12)),
+                  icon: const Icon(
+                    Icons.email_rounded,
+                    size: 15,
+                    color: Color(0xFF34D399),
+                  ),
+                  label: const Text(
+                    'Email',
+                    style: TextStyle(color: Color(0xFF34D399), fontSize: 12),
+                  ),
                 ),
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF2563EB),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
                 onPressed: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => ConnectionDetailScreen(connectionId: conn.id),
+                      builder: (_) =>
+                          ConnectionDetailScreen(connectionId: conn.id),
                     ),
                   );
                 },
-                icon: const Icon(Icons.badge_rounded, size: 14, color: Colors.white),
-                label: const Text('Full Profile', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                icon: const Icon(
+                  Icons.badge_rounded,
+                  size: 14,
+                  color: Colors.white,
+                ),
+                label: const Text(
+                  'Full Profile',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ],
           ),
@@ -1043,7 +1201,8 @@ class _MeshPainter extends CustomPainter {
       final isConnectedToSelected = isSourceSelected || isTargetSelected;
 
       final hasActiveHighlight = searchActive || selectedNodeId != null;
-      final isHighlighted = isNodeHighlighted(sNode) && isNodeHighlighted(tNode);
+      final isHighlighted =
+          isNodeHighlighted(sNode) && isNodeHighlighted(tNode);
 
       double opacity = 0.35;
       double width = edge.width;
@@ -1072,7 +1231,9 @@ class _MeshPainter extends CustomPainter {
       final dx = tNode.position.dx - sNode.position.dx;
       final dy = tNode.position.dy - sNode.position.dy;
       final norm = math.sqrt(dx * dx + dy * dy);
-      final curveOffset = (norm > 0) ? Offset(-dy / norm * 12, dx / norm * 12) : Offset.zero;
+      final curveOffset = (norm > 0)
+          ? Offset(-dy / norm * 12, dx / norm * 12)
+          : Offset.zero;
 
       path.quadraticBezierTo(
         midX + curveOffset.dx,

@@ -2,6 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <key>NSCameraUsageDescription</key><string>Scan a contact QR to save a card to your Acquenta wallet.</string>
+  <key>NSMicrophoneUsageDescription</key><string>Speak a short memory cue about someone you met.</string>
+  <key>NSSpeechRecognitionUsageDescription</key><string>Turn your spoken memory into editable text.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleExecutable</key>

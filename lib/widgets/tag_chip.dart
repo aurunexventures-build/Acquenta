@@ -19,7 +19,8 @@ class TagChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final bg = backgroundColor ?? theme.colorScheme.primary.withValues(alpha: 0.1);
+    final bg =
+        backgroundColor ?? theme.colorScheme.primary.withValues(alpha: 0.1);
     final textCol = textColor ?? theme.colorScheme.primary;
 
     return Container(
@@ -30,10 +31,7 @@ class TagChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: textCol.withValues(alpha: 0.25),
-          width: 0.8,
-        ),
+        border: Border.all(color: textCol.withValues(alpha: 0.25), width: 0.8),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -42,12 +40,14 @@ class TagChip extends StatelessWidget {
             Icon(icon, size: 13, color: textCol),
             const SizedBox(width: 4),
           ],
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: textCol,
+          Flexible(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: textCol,
+              ),
             ),
           ),
           if (onDeleted != null) ...[

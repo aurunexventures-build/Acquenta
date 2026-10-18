@@ -1,369 +1,343 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:provider/provider.dart';
+import 'package:uuid/uuid.dart';
 import '../models/saved_connection.dart';
 import '../models/event_context.dart';
-import 'package:uuid/uuid.dart';
+import '../services/auth_service.dart';
+import '../services/sync_service.dart';
+import 'photo_picker_tile.dart';
+import 'voice_magic_bar.dart';
 
+/// Capture once, organise once, review. Original words remain editable.
 class VoiceCaptureDialog extends StatefulWidget {
   final String? activeEventName;
-  final Function(SavedConnection connection) onCaptured;
-
+  final SavedConnection? connection;
+  final SyncService? service;
+  final FutureOr<void> Function(SavedConnection connection) onCaptured;
   const VoiceCaptureDialog({
     super.key,
     this.activeEventName,
+    this.connection,
+    this.service,
     required this.onCaptured,
   });
-
   @override
   State<VoiceCaptureDialog> createState() => _VoiceCaptureDialogState();
 }
 
 class _VoiceCaptureDialogState extends State<VoiceCaptureDialog> {
-  final stt.SpeechToText _speech = stt.SpeechToText();
-  bool _isListening = false;
-  bool _isAvailable = false;
-  String _wordsSpoken = '';
-  double _soundLevel = 0.0;
-
-  // Parsed results
-  String _extractedName = '';
-  String _extractedRole = '';
-  String _extractedEvent = '';
-  List<String> _extractedSkills = [];
-  String _extractedNotes = '';
-
+  late final SyncService _service;
+  final _raw = TextEditingController();
+  final Map<String, TextEditingController> _fields = {};
+  bool _busy = false, _saving = false, _review = false;
+  String _status = '', _photo = '';
+  int _request = 0;
+  static const _labels = {
+    'fullName': 'Name',
+    'eventName': 'Event',
+    'role': 'Role',
+    'company': 'Company',
+    'summary': 'What you discussed',
+    'skills': 'Skills / interests (comma separated)',
+    'distinctiveMemory': 'What made them memorable?',
+    'microContext': 'Where did you chat?',
+    'futureSelfNote': 'Note to your future self',
+    'vibeTags': 'Your impressions (comma separated)',
+    'callWhen': 'Reach out when… (comma separated)',
+  };
   @override
   void initState() {
     super.initState();
-    _initSpeech();
+    _service = widget.service ?? SyncService();
+    final c = widget.connection;
+    final initial = <String, String>{
+      'fullName': c?.fullName ?? '',
+      'role': c?.role ?? '',
+      'company': c?.company ?? '',
+      'eventName': c?.eventContext.eventName ?? widget.activeEventName ?? '',
+      'summary': c?.eventContext.notes ?? '',
+      'skills': c?.techStack.join(', ') ?? '',
+      'distinctiveMemory': c?.distinctiveMemory ?? '',
+      'microContext': c?.microContext ?? '',
+      'futureSelfNote': c?.futureSelfNote ?? '',
+      'vibeTags': c?.vibeTags.join(', ') ?? '',
+      'callWhen': c?.callWhen.join(', ') ?? '',
+    };
+    for (final key in _labels.keys) {
+      _fields[key] = TextEditingController(text: initial[key]);
+    }
+    _raw.text = c?.rawCue ?? '';
+    _photo = c?.avatarUrl ?? '';
   }
 
-  Future<void> _initSpeech() async {
-    try {
-      final available = await _speech.initialize(
-        onError: (err) {
-          if (mounted) {
-            setState(() => _isListening = false);
-          }
-        },
-        onStatus: (status) {
-          if (mounted) {
-            setState(() => _isListening = status == 'listening');
-          }
-        },
+  String _value(String key) => _fields[key]!.text.trim();
+  List<String> _tags(String key) => _value(key)
+      .split(',')
+      .map((s) => s.trim())
+      .where((s) => s.isNotEmpty)
+      .toSet()
+      .take(30)
+      .toList();
+  void _rawChanged(String value) {
+    setState(() {
+      _review = false;
+      _fields['summary']!.clear();
+      _status = '';
+    });
+  }
+
+  Future<void> _generate() async {
+    final auth = context.read<AuthService?>();
+    final raw = _raw.text.trim();
+    if (raw.isEmpty) {
+      setState(() => _status = 'Speak or type a few words first.');
+      return;
+    }
+    if (auth == null || !auth.isAuthenticated) {
+      setState(
+        () =>
+            _status = 'Sign in for AI. You can still save your original note.',
       );
-      if (mounted) {
-        setState(() => _isAvailable = available);
-        if (available) {
-          _startListening();
-        }
+      return;
+    }
+    final generation = ++_request, uid = auth.currentUser?.uid;
+    setState(() {
+      _busy = true;
+      _status = '';
+    });
+    try {
+      final data = await _service.generateCues(
+        raw,
+        _value('eventName'),
+        auth,
+        askFollowUp: false,
+      );
+      if (!mounted ||
+          generation != _request ||
+          uid != auth.currentUser?.uid ||
+          raw != _raw.text.trim()) {
+        return;
       }
+      final cues = Map<String, dynamic>.from(data['cues']);
+      setState(() {
+        for (final key in _fields.keys) {
+          if (widget.connection != null &&
+              ['fullName', 'role', 'company'].contains(key) &&
+              _value(key).isNotEmpty) {
+            continue;
+          }
+          final value = cues[key];
+          final rendered = value is List
+              ? value.join(', ')
+              : value is String
+              ? value
+              : '';
+          if (rendered.isNotEmpty) _fields[key]!.text = rendered;
+        }
+        _review = true;
+        _status = 'Ready to review. Your original words are kept.';
+      });
     } catch (_) {
       if (mounted) {
-        setState(() => _isAvailable = false);
+        setState(
+          () => _status =
+              'AI is unavailable. Your original note can still be saved.',
+        );
       }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
-  void _startListening() async {
-    _wordsSpoken = '';
-    await _speech.listen(
-      onResult: (result) {
-        if (mounted) {
-          setState(() {
-            _wordsSpoken = result.recognizedWords;
-            _parseSpokenText(_wordsSpoken);
-          });
-        }
-      },
-      onSoundLevelChange: (level) {
-        if (mounted) setState(() => _soundLevel = level);
-      },
-      listenOptions: stt.SpeechListenOptions(
-        pauseFor: const Duration(seconds: 4),
-        listenMode: stt.ListenMode.dictation,
-      ),
+  Future<void> _save() async {
+    if (!mounted) return;
+    final raw = _raw.text.trim();
+    if (_value('fullName').isEmpty) {
+      setState(
+        () => _status =
+            'Add a name or memorable label, such as “Designer with yellow bag”.',
+      );
+      return;
+    }
+    if (raw.isEmpty && _value('summary').isEmpty) {
+      setState(() => _status = 'Add at least one cue for your future self.');
+      return;
+    }
+    final turns = widget.connection?.cueConversation ?? <Map<String, String>>[];
+    final now = DateTime.now(), original = widget.connection;
+    final event =
+        (original?.eventContext ?? EventContext(eventName: '', date: now))
+            .copyWith(
+              eventName: _value('eventName').isEmpty
+                  ? 'Networking'
+                  : _value('eventName'),
+              notes: _value('summary').isEmpty ? raw : _value('summary'),
+              tags: {
+                ...?original?.eventContext.tags,
+                ..._tags('skills'),
+              }.toList(),
+            );
+    final draft =
+        original ??
+        SavedConnection(
+          id: const Uuid().v4(),
+          fullName: _value('fullName'),
+          eventContext: event,
+          savedAt: now,
+        );
+    final result = draft.copyWith(
+      fullName: _value('fullName'),
+      role: _value('role'),
+      company: _value('company'),
+      rawCue: raw,
+      cueConversation: turns,
+      avatarUrl: _photo,
+      eventContext: event,
+      techStack: _tags('skills'),
+      distinctiveMemory: _value('distinctiveMemory'),
+      microContext: _value('microContext'),
+      futureSelfNote: _value('futureSelfNote'),
+      vibeTags: _tags('vibeTags'),
+      callWhen: _tags('callWhen'),
+      updatedAt: now,
     );
-    setState(() => _isListening = true);
-  }
-
-  void _stopListening() async {
-    await _speech.stop();
-    setState(() => _isListening = false);
-  }
-
-  /// On-device zero-cost regex and heuristic parsing of spoken networking memos
-  void _parseSpokenText(String text) {
-    _extractedNotes = text;
-    final lower = text.toLowerCase();
-
-    // 1. Detect Event: look for "at [Event]" or "met at [Event]"
-    final eventMatch = RegExp(r'(?:at|during|from)\s+([A-Za-z0-9\x27\s]+?)(?:,|\.|\bwho\b|\bhe\b|\bshe\b|\bthey\b|$)', caseSensitive: false)
-        .firstMatch(text);
-    if (eventMatch != null) {
-      final candidate = eventMatch.group(1)?.trim() ?? '';
-      if (candidate.length > 2 && !candidate.toLowerCase().startsWith('the ')) {
-        _extractedEvent = candidate;
+    setState(() => _saving = true);
+    try {
+      await widget.onCaptured(result);
+      if (mounted) Navigator.pop(context);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _status =
+              'Could not save. Your draft is still here. If this connection changed elsewhere, copy your words and reopen it.';
+        });
       }
     }
-    if (_extractedEvent.isEmpty && widget.activeEventName != null) {
-      _extractedEvent = widget.activeEventName!;
-    }
-
-    // 2. Detect Name: look for "met [Name]" or "this is [Name]" or "name is [Name]"
-    final nameMatch = RegExp(r'(?:met|talking to|spoke with|name is|with)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)')
-        .firstMatch(text);
-    if (nameMatch != null) {
-      _extractedName = nameMatch.group(1)?.trim() ?? '';
-    } else {
-      // First 2 capitalized words
-      final capMatch = RegExp(r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b').firstMatch(text);
-      if (capMatch != null) {
-        _extractedName = capMatch.group(1)?.trim() ?? '';
-      }
-    }
-
-    // 3. Detect Role / Title: "developer", "engineer", "architect", "designer", "founder"
-    final roles = ['developer', 'engineer', 'architect', 'designer', 'founder', 'lead', 'manager', 'creator'];
-    for (final r in roles) {
-      if (lower.contains(r)) {
-        // e.g. "mobile developer" or "flutter architect"
-        final roleRegex = RegExp(r'(\b\w+\s+' + r + r'|\b' + r + r')', caseSensitive: false);
-        final rm = roleRegex.firstMatch(text);
-        if (rm != null) {
-          _extractedRole = rm.group(1) ?? r;
-          break;
-        }
-      }
-    }
-
-    // 4. Detect Skills / Tech Stack keywords
-    final techKeywords = [
-      'Flutter', 'Android', 'iOS', 'Dart', 'Kotlin', 'Swift', 'Firebase',
-      'Cloudflare', 'React', 'Python', 'AI', 'LLM', 'Agents', 'Go', 'Rust',
-      'Figma', 'TypeScript', 'Node', 'Backend', 'Frontend', 'Mobile'
-    ];
-    final foundSkills = <String>{};
-    for (final tech in techKeywords) {
-      if (lower.contains(tech.toLowerCase())) {
-        foundSkills.add(tech);
-      }
-    }
-    _extractedSkills = foundSkills.toList();
-  }
-
-  void _saveConnection() {
-    final finalName = _extractedName.isNotEmpty ? _extractedName : 'Quick Contact';
-    final finalEvent = _extractedEvent.isNotEmpty
-        ? _extractedEvent
-        : (widget.activeEventName ?? 'Networking Meetup');
-
-    final conn = SavedConnection(
-      id: const Uuid().v4(),
-      fullName: finalName,
-      role: _extractedRole,
-      headline: _extractedSkills.isNotEmpty ? 'Works on ${_extractedSkills.join(', ')}' : '',
-      techStack: _extractedSkills,
-      eventContext: EventContext(
-        eventName: finalEvent,
-        date: DateTime.now(),
-        notes: _extractedNotes,
-        tags: _extractedSkills,
-      ),
-      savedAt: DateTime.now(),
-    );
-
-    widget.onCaptured(conn);
-    Navigator.pop(context);
   }
 
   @override
   void dispose() {
-    _speech.stop();
+    _request++;
+    if (widget.service == null) _service.close();
+    _raw.dispose();
+    for (final controller in _fields.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
+  Widget _field(String key) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: TextField(
+      scrollPadding: const EdgeInsets.only(top: 24, bottom: 96),
+      controller: _fields[key],
+      maxLength: key == 'fullName'
+          ? 200
+          : key == 'eventName'
+          ? 300
+          : null,
+      maxLines: ['summary', 'futureSelfNote', 'distinctiveMemory'].contains(key)
+          ? 2
+          : 1,
+      decoration: InputDecoration(
+        labelText: _labels[key],
+        border: const OutlineInputBorder(),
+      ),
+    ),
+  );
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header
-              Row(
-                children: [
-                  CircleAvatar(
-                    backgroundColor: Colors.red.withValues(alpha: 0.12),
-                    radius: 20,
-                    child: const Icon(Icons.mic_rounded, color: Colors.red, size: 22),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          '5-Second Voice Memo',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                        ),
-                        Text(
-                          '100% on-device speech recognition & parsing',
-                          style: TextStyle(fontSize: 11, color: theme.hintColor),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 20),
-
-              // Animated Mic Pulse Indicator
-              GestureDetector(
-                onTap: () {
-                  if (!_isAvailable) {
-                    _initSpeech();
-                    return;
-                  }
-                  if (_isListening) {
-                    _stopListening();
-                  } else {
-                    _startListening();
-                  }
-                },
-                child: Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _isListening ? Colors.red : Colors.blue,
-                    boxShadow: [
-                      BoxShadow(
-                        color: (_isListening ? Colors.red : Colors.blue).withValues(alpha: 0.3),
-                        blurRadius: _isListening ? (16 + _soundLevel * 2) : 10,
-                        spreadRadius: _isListening ? (4 + _soundLevel) : 2,
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    _isListening ? Icons.mic : Icons.mic_none,
-                    color: Colors.white,
-                    size: 40,
+  Widget build(BuildContext context) => Dialog(
+    insetPadding: const EdgeInsets.all(12),
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 540),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Add a memory',
+                    style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
                   ),
                 ),
-              ),
-
-              const SizedBox(height: 12),
-              Text(
-                !_isAvailable
-                    ? 'Microphone / Speech service initializing...'
-                    : _isListening
-                        ? 'Listening... Speak details of who you met'
-                        : 'Tap mic to start speaking',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: _isListening ? Colors.red : theme.hintColor,
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Spoken Transcript Box
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: theme.scaffoldBackgroundColor,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: theme.dividerColor.withValues(alpha: 0.3)),
-                ),
-                child: Text(
-                  _wordsSpoken.isNotEmpty
-                      ? _wordsSpoken
-                      : 'e.g. "Met Anit Singh at Cam\'s Tech Talk, he\'s a mobile architect building Flutter and Android apps..."',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontStyle: _wordsSpoken.isEmpty ? FontStyle.italic : FontStyle.normal,
-                    color: _wordsSpoken.isEmpty ? theme.hintColor : theme.textTheme.bodyMedium?.color,
-                  ),
-                  maxLines: 4,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-
-              if (_extractedName.isNotEmpty || _extractedSkills.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.green.withValues(alpha: 0.25)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.auto_awesome, size: 14, color: Colors.green),
-                          SizedBox(width: 6),
-                          Text('Auto-Extracted Context:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.green)),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      if (_extractedName.isNotEmpty)
-                        Text('Name: $_extractedName', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                      if (_extractedRole.isNotEmpty)
-                        Text('Role: $_extractedRole', style: const TextStyle(fontSize: 12)),
-                      if (_extractedEvent.isNotEmpty)
-                        Text('Event: $_extractedEvent', style: const TextStyle(fontSize: 12)),
-                      if (_extractedSkills.isNotEmpty)
-                        Text('Skills: ${_extractedSkills.join(', ')}', style: const TextStyle(fontSize: 12, color: Colors.blue)),
-                    ],
-                  ),
+                IconButton(
+                  tooltip: 'Close',
+                  onPressed: _saving ? null : () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
                 ),
               ],
-
-              const SizedBox(height: 20),
-
-              Row(
+            ),
+            if (widget.connection == null)
+              _field('fullName')
+            else
+              Text(
+                widget.connection!.fullName,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _raw,
+              onChanged: _rawChanged,
+              minLines: 3,
+              maxLines: 5,
+              maxLength: 6000,
+              enabled: !_busy && !_saving,
+              decoration: const InputDecoration(
+                labelText: 'Say it in your own words',
+                hintText: 'What do you want to remember?',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            VoiceMagicBar(
+              controller: _raw,
+              onMagic: _generate,
+              onChanged: _rawChanged,
+              busy: _busy || _saving,
+            ),
+            if (_status.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(_status),
+              ),
+            if (_review) ...[
+              const SizedBox(height: 12),
+              _field('summary'),
+              ExpansionTile(
+                title: const Text('More details'),
                 children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Cancel'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                      ),
-                      icon: const Icon(Icons.check, size: 18),
-                      label: const Text('Save Contact'),
-                      onPressed: _wordsSpoken.isNotEmpty ? _saveConnection : null,
-                    ),
-                  ),
+                  for (final key in _labels.keys.where(
+                    (key) => key != 'summary',
+                  ))
+                    _field(key),
                 ],
               ),
             ],
-          ),
+            ExpansionTile(
+              title: const Text('Add a photo or event'),
+              children: [
+                PhotoPickerTile(
+                  photo: _photo,
+                  name: _value('fullName'),
+                  onChanged: (photo) => setState(() => _photo = photo),
+                ),
+                if (!_review) _field('eventName'),
+              ],
+            ),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: _busy || _saving ? null : _save,
+              child: Text(_saving ? 'Saving…' : 'Save'),
+            ),
+          ],
         ),
       ),
-    );
-  }
+    ),
+  );
 }

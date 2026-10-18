@@ -1,255 +1,323 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/contact_card.dart';
 import '../models/event_context.dart';
+import '../services/auth_service.dart';
+import '../services/sync_service.dart';
 import '../services/vcard_service.dart';
+import '../services/offline_card_share.dart';
+import '../services/nfc_share_service.dart';
 
 class QrShareDialog extends StatefulWidget {
   final ContactCard card;
   final EventContext? defaultEventContext;
-
   const QrShareDialog({
     super.key,
     required this.card,
     this.defaultEventContext,
   });
-
   @override
   State<QrShareDialog> createState() => _QrShareDialogState();
 }
 
-class _QrShareDialogState extends State<QrShareDialog> {
-  late bool _attachEvent;
-  late TextEditingController _eventNameController;
-  late TextEditingController _notesController;
-
+class _QrShareDialogState extends State<QrShareDialog>
+    with WidgetsBindingObserver {
+  final _service = SyncService();
+  final _nfc = NfcShareService();
+  bool _busy = false, _nfcActive = false, _attachEvent = false;
+  String? _url;
+  String _status = '', _availability = 'unsupported';
+  Timer? _expiry;
   @override
   void initState() {
     super.initState();
-    _attachEvent = widget.defaultEventContext != null;
-    _eventNameController = TextEditingController(
-      text: widget.defaultEventContext?.eventName ?? '',
-    );
-    _notesController = TextEditingController(
-      text: widget.defaultEventContext?.notes ?? '',
-    );
+    WidgetsBinding.instance.addObserver(this);
+    _nfc.availability().then((value) {
+      if (mounted) setState(() => _availability = value);
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed && _nfcActive) {
+      unawaited(_stopNfc());
+    }
+  }
+
+  Future<void> _stopNfc() async {
+    _expiry?.cancel();
+    await _nfc.stop();
+    if (mounted) setState(() => _nfcActive = false);
+  }
+
+  Future<void> _startNfc() async {
+    if (_nfcActive) {
+      await _stopNfc();
+      return;
+    }
+    final available = await _nfc.availability();
+    if (!mounted) return;
+    if (available != 'available') {
+      setState(
+        () => _status = available == 'disabled'
+            ? 'Turn on NFC in your phone settings, then try again.'
+            : 'NFC sharing is unavailable. Use the QR or contact file.',
+      );
+      return;
+    }
+    try {
+      await _nfc.start(
+        VCardService.generateVCard(
+          card: widget.card,
+          eventContext: _attachEvent ? widget.defaultEventContext : null,
+        ),
+      );
+      if (!mounted) {
+        await _nfc.stop();
+        return;
+      }
+      setState(() {
+        _nfcActive = true;
+        _status =
+            'Open Receive card in Acquenta on the other Android phone, then hold the unlocked phones back to back. If it does not respond, use the QR.';
+      });
+      _expiry = Timer(const Duration(minutes: 2), () {
+        _stopNfc();
+        if (mounted) {
+          setState(
+            () => _status = 'NFC sharing ended. Start again or use the QR.',
+          );
+        }
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _status =
+              'NFC could not start. Use the QR or send the contact file.',
+        );
+      }
+    }
+  }
+
+  Future<void> _publish({bool revoke = false}) async {
+    final auth = context.read<AuthService?>();
+    if (auth == null || !auth.isAuthenticated) {
+      setState(
+        () => _status =
+            'Sign in to create an online link. Offline sharing still works.',
+      );
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      final result = await _service.request(
+        '/api/v1/cards/publish',
+        revoke ? {'id': widget.card.id} : {'card': widget.card.toJson()},
+        auth,
+        method: revoke ? 'DELETE' : 'POST',
+      );
+      if (mounted) {
+        setState(() {
+          _url = revoke ? null : result['url'] as String;
+          _status = revoke
+              ? 'Online link revoked.'
+              : 'Link created. Opening this link requires internet.';
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _status =
+              'Online sharing is unavailable. The offline QR and contact file still work.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
   void dispose() {
-    _eventNameController.dispose();
-    _notesController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    _expiry?.cancel();
+    unawaited(_nfc.stop());
+    _service.close();
     super.dispose();
-  }
-
-  EventContext? _getCurrentEventContext() {
-    if (!_attachEvent || _eventNameController.text.trim().isEmpty) {
-      return null;
-    }
-    return EventContext(
-      eventName: _eventNameController.text.trim(),
-      location: widget.defaultEventContext?.location ?? '',
-      date: DateTime.now(),
-      notes: _notesController.text.trim(),
-      tags: widget.card.techStack,
-    );
-  }
-
-  String _getVCardString() {
-    return VCardService.generateVCard(
-      card: widget.card,
-      eventContext: _getCurrentEventContext(),
-    );
-  }
-
-  Color _parseColor(String hex) {
-    try {
-      final clean = hex.replaceAll('#', '');
-      return Color(int.parse('FF$clean', radix: 16));
-    } catch (_) {
-      return const Color(0xFF2563EB);
-    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final accentColor = _parseColor(widget.card.themeColorHex);
-    final vCardData = _getVCardString();
-
+    final event = _attachEvent ? widget.defaultEventContext : null;
+    final full = VCardService.generateVCard(
+      card: widget.card,
+      eventContext: event,
+    );
+    final qr = OfflineCardShare.qr(widget.card, event: event);
+    final fits = utf8.encode(qr).length <= 2000;
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      insetPadding: const EdgeInsets.all(16),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header
               Row(
                 children: [
-                  CircleAvatar(
-                    backgroundColor: accentColor.withValues(alpha: 0.15),
-                    radius: 20,
-                    child: Icon(Icons.qr_code_rounded, color: accentColor, size: 22),
-                  ),
-                  const SizedBox(width: 12),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.card.fullName,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          widget.card.title,
-                          style: TextStyle(fontSize: 12, color: theme.hintColor),
-                        ),
-                      ],
+                    child: Text(
+                      'Send my card',
+                      style: Theme.of(context).textTheme.titleLarge,
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close),
+                    tooltip: 'Close',
                     onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
                   ),
                 ],
               ),
-
-              const SizedBox(height: 20),
-
-              // QR Code Container
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: QrImageView(
-                  data: vCardData,
-                  version: QrVersions.auto,
-                  size: 220.0,
-                  eyeStyle: QrEyeStyle(
-                    eyeShape: QrEyeShape.square,
-                    color: accentColor,
-                  ),
-                  dataModuleStyle: const QrDataModuleStyle(
-                    dataModuleShape: QrDataModuleShape.square,
-                    color: Color(0xFF1E293B),
-                  ),
-                  errorCorrectionLevel: QrErrorCorrectLevel.M,
-                ),
-              ),
-
-              const SizedBox(height: 16),
               Text(
-                'Scan to save contact directly into Apple or Android Contacts',
-                style: TextStyle(fontSize: 12, color: theme.hintColor),
+                widget.card.fullName,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 16),
+              if (fits)
+                Center(
+                  child: Container(
+                    color: Colors.white,
+                    padding: const EdgeInsets.all(12),
+                    child: LayoutBuilder(
+                      builder: (context, box) => QrImageView(
+                        data: qr,
+                        version: QrVersions.auto,
+                        size: box.maxWidth.clamp(160.0, 224.0),
+                        errorCorrectionLevel: QrErrorCorrectLevel.M,
+                      ),
+                    ),
+                  ),
+                )
+              else
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'This contact is too large for a QR. Send the contact file below.',
+                  ),
+                ),
+              const SizedBox(height: 12),
+              const Text(
+                'Scan to save. No internet needed.',
                 textAlign: TextAlign.center,
               ),
-
+              if (qr != full)
+                const Padding(
+                  padding: EdgeInsets.only(top: 6),
+                  child: Text(
+                    'QR contains basic contact details. The contact file includes the full card.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
               const SizedBox(height: 16),
-              const Divider(),
-
-              // Event Context Stamping Section
-              CheckboxListTile(
-                value: _attachEvent,
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                title: const Text(
-                  'Attach Meeting Context to QR / Card',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                ),
-                subtitle: const Text(
-                  'Embeds the event name and discussion topics in recipient\'s contact notes',
-                  style: TextStyle(fontSize: 11),
-                ),
-                onChanged: (val) {
-                  setState(() {
-                    _attachEvent = val ?? false;
-                  });
+              FilledButton.icon(
+                onPressed: () async {
+                  try {
+                    final box = context.findRenderObject() as RenderBox?;
+                    await VCardService.shareVCard(
+                      card: widget.card,
+                      eventContext: event,
+                      sharePositionOrigin: box == null
+                          ? null
+                          : box.localToGlobal(Offset.zero) & box.size,
+                    );
+                  } catch (_) {
+                    if (mounted) {
+                      setState(
+                        () => _status =
+                            'Could not open sharing. You can still use the QR.',
+                      );
+                    }
+                  }
                 },
+                icon: const Icon(Icons.ios_share),
+                label: const Text('Send contact file'),
               ),
-
-              if (_attachEvent) ...[
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _eventNameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Event / Meetup Name',
-                    hintText: 'e.g. Cam\'s Tech Talk, Google I/O',
-                    isDense: true,
-                    prefixIcon: Icon(Icons.event, size: 18),
-                    border: OutlineInputBorder(),
+              const Text(
+                'Choose a nearby sharing option on your phone.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 11),
+              ),
+              if (_availability != 'unsupported')
+                OutlinedButton.icon(
+                  onPressed: _startNfc,
+                  icon: const Icon(Icons.nfc),
+                  label: Text(
+                    _nfcActive ? 'Stop NFC' : 'Send by NFC (Android)',
                   ),
-                  onChanged: (_) => setState(() {}),
                 ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _notesController,
-                  maxLines: 2,
-                  decoration: const InputDecoration(
-                    labelText: 'Quick Topic / Discussion Note',
-                    hintText: 'e.g. Discussed Flutter & Android side projects',
-                    isDense: true,
-                    prefixIcon: Icon(Icons.notes, size: 18),
-                    border: OutlineInputBorder(),
+              if (_status.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Text(
+                    _status,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                   ),
-                  onChanged: (_) => setState(() {}),
                 ),
-              ],
-
-              const SizedBox(height: 20),
-
-              // Action Buttons
-              Row(
+              ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: const Text('More sharing options'),
                 children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.copy, size: 16),
-                      label: const Text('Copy vCard'),
-                      onPressed: () {
-                        Clipboard.setData(ClipboardData(text: vCardData));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('vCard copied to clipboard!'),
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
-                      },
+                  if (widget.defaultEventContext != null)
+                    CheckboxListTile(
+                      value: _attachEvent,
+                      onChanged: (value) =>
+                          setState(() => _attachEvent = value ?? false),
+                      title: Text(
+                        'Include ${widget.defaultEventContext!.eventName}',
+                      ),
+                      subtitle: const Text('Also shares the event notes.'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  TextButton.icon(
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: full));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Contact copied.')),
+                      );
+                    },
+                    icon: const Icon(Icons.copy),
+                    label: const Text('Copy contact'),
+                  ),
+                  TextButton.icon(
+                    onPressed: _busy ? null : () => _publish(),
+                    icon: const Icon(Icons.link),
+                    label: Text(
+                      _busy ? 'Creating link…' : 'Create online link',
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: accentColor,
-                        foregroundColor: Colors.white,
-                      ),
-                      icon: const Icon(Icons.share, size: 16),
-                      label: const Text('Share'),
-                      onPressed: () {
-                        Share.share(
-                          'Contact Card: ${widget.card.fullName} (${widget.card.title})\n'
-                          '${widget.card.email.isNotEmpty ? "Email: ${widget.card.email}\n" : ""}'
-                          '${widget.card.phone.isNotEmpty ? "Phone: ${widget.card.phone}\n" : ""}'
-                          '${_attachEvent && _eventNameController.text.isNotEmpty ? "Met at: ${_eventNameController.text}\n" : ""}',
-                          subject: '${widget.card.fullName}\'s Contact Card',
-                        );
-                      },
+                  if (_url != null) ...[
+                    SelectableText(_url!),
+                    TextButton(
+                      onPressed: () => Share.share(_url!),
+                      child: const Text('Send online link'),
                     ),
+                  ],
+                  TextButton(
+                    onPressed: _busy ? null : () => _publish(revoke: true),
+                    child: const Text('Revoke online link'),
+                  ),
+                  const Text(
+                    'Offline sharing sends contact details. Portraits and web links may load later when internet is available.',
+                    style: TextStyle(fontSize: 11),
                   ),
                 ],
               ),

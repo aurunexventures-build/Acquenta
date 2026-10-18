@@ -1,3 +1,4 @@
+import '../theme/metcue_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -7,6 +8,7 @@ import '../models/event_context.dart';
 import '../providers/connections_provider.dart';
 import '../providers/cards_provider.dart';
 import '../widgets/tag_chip.dart';
+import '../widgets/voice_capture_dialog.dart';
 
 class AddConnectionScreen extends StatefulWidget {
   final SavedConnection? initialConnection;
@@ -19,6 +21,8 @@ class AddConnectionScreen extends StatefulWidget {
 
 class _AddConnectionScreenState extends State<AddConnectionScreen> {
   final _formKey = GlobalKey<FormState>();
+  bool _saving = false;
+  String? _walletScope;
 
   late String _fullName;
   late String _role;
@@ -101,7 +105,10 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
       _email = '';
       _phone = '';
       // Pre-fill from active event mode if set!
-      final activeEvent = Provider.of<CardsProvider>(context, listen: false).activeEventMode;
+      final activeEvent = Provider.of<CardsProvider>(
+        context,
+        listen: false,
+      ).activeEventMode;
       _eventName = activeEvent?.eventName ?? '';
       _location = activeEvent?.location ?? '';
       _eventDate = DateTime.now();
@@ -143,65 +150,97 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
     }
   }
 
-  void _save() {
-    if (!_formKey.currentState!.validate()) return;
+  Future<void> _save() async {
+    if (_saving || !_formKey.currentState!.validate()) return;
     _formKey.currentState!.save();
 
-    final connectionsProvider = Provider.of<ConnectionsProvider>(context, listen: false);
-
-    final eventContext = EventContext(
-      eventName: _eventName.trim().isNotEmpty ? _eventName.trim() : 'General Networking',
-      location: _location.trim(),
-      date: _eventDate,
-      notes: _eventNotes.trim(),
-      tags: _techStack,
+    final connectionsProvider = Provider.of<ConnectionsProvider>(
+      context,
+      listen: false,
     );
 
-    if (widget.initialConnection != null) {
-      final updated = widget.initialConnection!.copyWith(
-        fullName: _fullName,
-        role: _role,
-        company: _company,
-        headline: _headline,
-        email: _email,
-        phone: _phone,
-        techStack: _techStack,
-        eventContext: eventContext,
-        futureSelfNote: _futureSelfNote.trim(),
-        vibeTags: _vibeTags,
-        distinctiveMemory: _distinctiveMemory.trim(),
-        microContext: _microContext.trim(),
-        callWhen: _callWhen,
+    if (_walletScope != connectionsProvider.walletScope) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Account changed. Reopen this form before saving.'),
+        ),
       );
-      connectionsProvider.updateConnection(updated);
-    } else {
-      final newConn = SavedConnection(
-        id: const Uuid().v4(),
-        fullName: _fullName,
-        role: _role,
-        company: _company,
-        headline: _headline,
-        email: _email,
-        phone: _phone,
-        techStack: _techStack,
-        links: const [],
-        eventContext: eventContext,
-        futureSelfNote: _futureSelfNote.trim(),
-        vibeTags: _vibeTags,
-        distinctiveMemory: _distinctiveMemory.trim(),
-        microContext: _microContext.trim(),
-        callWhen: _callWhen,
-        savedAt: DateTime.now(),
-        isFavorite: false,
-      );
-      connectionsProvider.addConnection(newConn);
+      return;
     }
+    setState(() => _saving = true);
+    try {
+      final eventContext = EventContext(
+        eventName: _eventName.trim().isNotEmpty
+            ? _eventName.trim()
+            : 'General Networking',
+        location: _location.trim(),
+        date: _eventDate,
+        notes: _eventNotes.trim(),
+        tags: _techStack,
+      );
 
-    Navigator.pop(context);
+      if (widget.initialConnection != null) {
+        final updated = widget.initialConnection!.copyWith(
+          fullName: _fullName,
+          role: _role,
+          company: _company,
+          headline: _headline,
+          email: _email,
+          phone: _phone,
+          techStack: _techStack,
+          eventContext: eventContext,
+          futureSelfNote: _futureSelfNote.trim(),
+          vibeTags: _vibeTags,
+          distinctiveMemory: _distinctiveMemory.trim(),
+          microContext: _microContext.trim(),
+          callWhen: _callWhen,
+        );
+        await connectionsProvider.updateConnection(
+          updated,
+          expectedVersion: widget.initialConnection!.updatedAt,
+        );
+      } else {
+        final newConn = SavedConnection(
+          id: const Uuid().v4(),
+          fullName: _fullName,
+          role: _role,
+          company: _company,
+          headline: _headline,
+          email: _email,
+          phone: _phone,
+          techStack: _techStack,
+          links: const [],
+          eventContext: eventContext,
+          futureSelfNote: _futureSelfNote.trim(),
+          vibeTags: _vibeTags,
+          distinctiveMemory: _distinctiveMemory.trim(),
+          microContext: _microContext.trim(),
+          callWhen: _callWhen,
+          savedAt: DateTime.now(),
+          isFavorite: false,
+        );
+        await connectionsProvider.addConnection(newConn);
+      }
+
+      if (mounted) Navigator.pop(context);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not save. Your draft is kept here. If the connection changed, copy your edits and reopen it.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    _walletScope ??= context.read<ConnectionsProvider>().walletScope;
     final theme = Theme.of(context);
     final isEditing = widget.initialConnection != null;
 
@@ -210,23 +249,57 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
         title: Text(isEditing ? 'Edit Connection' : 'Save New Connection'),
         actions: [
           TextButton.icon(
-            icon: const Icon(Icons.check, color: Colors.blue),
-            label: const Text('Save', style: TextStyle(fontWeight: FontWeight.bold)),
-            onPressed: _save,
+            icon: const Icon(Icons.check, color: MetCueTheme.purple),
+            label: const Text(
+              'Save',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            onPressed: _saving ? null : _save,
           ),
         ],
       ),
       body: Form(
         key: _formKey,
         child: ListView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.all(20),
           children: [
+            OutlinedButton.icon(
+              icon: const Icon(Icons.mic),
+              label: const Text('Use a quick memory cue instead'),
+              onPressed: () async {
+                bool saved = false;
+                final provider = context.read<ConnectionsProvider>();
+                await showDialog(
+                  context: context,
+                  builder: (_) => VoiceCaptureDialog(
+                    connection: widget.initialConnection,
+                    activeEventName: context
+                        .read<CardsProvider>()
+                        .activeEventMode
+                        ?.eventName,
+                    onCaptured: (connection) async {
+                      if (widget.initialConnection == null) {
+                        await provider.addConnection(connection);
+                      } else {
+                        await provider.updateConnection(connection);
+                      }
+                      saved = true;
+                    },
+                  ),
+                );
+                if (saved && context.mounted) Navigator.pop(context);
+              },
+            ),
+            const SizedBox(height: 16),
             // Event Memory Block (Highlighted because this solves Cam's problem!)
             Container(
               decoration: BoxDecoration(
-                color: Colors.amber.withValues(alpha: 0.1),
+                color: MetCueTheme.purple.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
+                border: Border.all(
+                  color: MetCueTheme.purple.withValues(alpha: 0.4),
+                ),
               ),
               padding: const EdgeInsets.all(18),
               child: Column(
@@ -234,31 +307,46 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                 children: [
                   const Row(
                     children: [
-                      Icon(Icons.psychology_alt_rounded, color: Colors.amber, size: 24),
+                      Icon(
+                        Icons.psychology_alt_rounded,
+                        color: MetCueTheme.purple,
+                        size: 24,
+                      ),
                       SizedBox(width: 8),
                       Text(
                         'Event Context & Memory Aid',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 6),
                   Text(
                     'Fill this in so you can easily recall: "Who was that person I met at this event who does X?" even years later!',
-                    style: TextStyle(fontSize: 12, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.8)),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: theme.textTheme.bodyMedium?.color?.withValues(
+                        alpha: 0.8,
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 14),
                   TextFormField(
+                    scrollPadding: const EdgeInsets.only(top: 24, bottom: 96),
                     initialValue: _eventName,
                     decoration: const InputDecoration(
                       labelText: 'Event / Meetup Name *',
                       hintText: 'e.g. Cam\'s Tech Talk, Google I/O',
-                      prefixIcon: Icon(Icons.event, color: Colors.amber),
+                      prefixIcon: Icon(Icons.event, color: MetCueTheme.purple),
                       filled: true,
                       fillColor: Colors.white,
                       border: OutlineInputBorder(),
                     ),
-                    validator: (v) => v == null || v.trim().isEmpty ? 'Please enter event name' : null,
+                    validator: (v) => v == null || v.trim().isEmpty
+                        ? 'Please enter event name'
+                        : null,
                     onSaved: (v) => _eventName = v ?? '',
                   ),
                   const SizedBox(height: 12),
@@ -266,11 +354,18 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                     children: [
                       Expanded(
                         child: TextFormField(
+                          scrollPadding: const EdgeInsets.only(
+                            top: 24,
+                            bottom: 96,
+                          ),
                           initialValue: _location,
                           decoration: const InputDecoration(
                             labelText: 'Location / Venue',
                             hintText: 'e.g. SF, London, Virtual',
-                            prefixIcon: Icon(Icons.location_on_outlined, size: 20),
+                            prefixIcon: Icon(
+                              Icons.location_on_outlined,
+                              size: 20,
+                            ),
                             filled: true,
                             fillColor: Colors.white,
                             border: OutlineInputBorder(),
@@ -281,7 +376,10 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                       const SizedBox(width: 12),
                       OutlinedButton.icon(
                         style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 16,
+                          ),
                           backgroundColor: Colors.white,
                         ),
                         icon: const Icon(Icons.calendar_today, size: 16),
@@ -291,7 +389,9 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                             context: context,
                             initialDate: _eventDate,
                             firstDate: DateTime(2020),
-                            lastDate: DateTime.now().add(const Duration(days: 365)),
+                            lastDate: DateTime.now().add(
+                              const Duration(days: 365),
+                            ),
                           );
                           if (picked != null) {
                             setState(() => _eventDate = picked);
@@ -302,11 +402,13 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
+                    scrollPadding: const EdgeInsets.only(top: 24, bottom: 96),
                     initialValue: _eventNotes,
                     maxLines: 3,
                     decoration: const InputDecoration(
                       labelText: 'Discussion Notes & What They Do',
-                      hintText: 'e.g. Building side projects on Android & Flutter, talked about AI agent apps, looking for mobile co-founder...',
+                      hintText:
+                          'e.g. Building side projects on Android & Flutter, talked about AI agent apps, looking for mobile co-founder...',
                       prefixIcon: Icon(Icons.edit_note, size: 22),
                       filled: true,
                       fillColor: Colors.white,
@@ -324,9 +426,12 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
             Card(
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: Colors.amber.withValues(alpha: 0.3), width: 1.2),
+                side: BorderSide(
+                  color: MetCueTheme.purple.withValues(alpha: 0.3),
+                  width: 1.2,
+                ),
               ),
-              color: Colors.amber.withValues(alpha: 0.04),
+              color: MetCueTheme.purple.withValues(alpha: 0.04),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -334,13 +439,17 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.mark_email_read_rounded, size: 20, color: Colors.amber),
+                        const Icon(
+                          Icons.mark_email_read_rounded,
+                          size: 20,
+                          color: MetCueTheme.purple,
+                        ),
                         const SizedBox(width: 8),
                         Text(
                           'Message to My Future Self',
                           style: theme.textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
-                            color: Colors.amber.shade900,
+                            color: MetCueTheme.purple,
                           ),
                         ),
                       ],
@@ -352,11 +461,13 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
+                      scrollPadding: const EdgeInsets.only(top: 24, bottom: 96),
                       initialValue: _futureSelfNote,
                       maxLines: 2,
                       decoration: const InputDecoration(
                         labelText: 'Personal Advice to Future Self',
-                        hintText: 'e.g. Very nice in talking and sounded very aspirational, would want to work with in future...',
+                        hintText:
+                            'e.g. Very nice in talking and sounded very aspirational, would want to work with in future...',
                         prefixIcon: Icon(Icons.psychology_alt_rounded),
                         border: OutlineInputBorder(),
                       ),
@@ -365,7 +476,11 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                     const SizedBox(height: 16),
                     Text(
                       'Human Vibe & Impression Badges:',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.textTheme.bodyMedium?.color),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: theme.textTheme.bodyMedium?.color,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     // Quick vibe presets
@@ -375,7 +490,10 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                       children: _vibeSuggestions.map((vibe) {
                         final isSelected = _vibeTags.contains(vibe);
                         return FilterChip(
-                          label: Text(vibe, style: const TextStyle(fontSize: 11)),
+                          label: Text(
+                            vibe,
+                            style: const TextStyle(fontSize: 11),
+                          ),
                           selected: isSelected,
                           onSelected: (selected) {
                             setState(() {
@@ -386,8 +504,10 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                               }
                             });
                           },
-                          selectedColor: Colors.purple.withValues(alpha: 0.25),
-                          checkmarkColor: Colors.purple,
+                          selectedColor: MetCueTheme.purple.withValues(
+                            alpha: 0.25,
+                          ),
+                          checkmarkColor: MetCueTheme.purple,
                         );
                       }).toList(),
                     ),
@@ -396,6 +516,10 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                       children: [
                         Expanded(
                           child: TextField(
+                            scrollPadding: const EdgeInsets.only(
+                              top: 24,
+                              bottom: 96,
+                            ),
                             controller: _vibeController,
                             decoration: const InputDecoration(
                               hintText: 'Or add custom vibe badge...',
@@ -420,9 +544,12 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                         children: _vibeTags.map((vibe) {
                           return TagChip(
                             label: '✨ $vibe',
-                            backgroundColor: Colors.purple.withValues(alpha: 0.12),
-                            textColor: Colors.purple.shade400,
-                            onDeleted: () => setState(() => _vibeTags.remove(vibe)),
+                            backgroundColor: MetCueTheme.purple.withValues(
+                              alpha: 0.12,
+                            ),
+                            textColor: MetCueTheme.purple,
+                            onDeleted: () =>
+                                setState(() => _vibeTags.remove(vibe)),
                           );
                         }).toList(),
                       ),
@@ -437,9 +564,11 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
             // Cognitive Memory Anchors (1-Year Human Recall Science)
             Container(
               decoration: BoxDecoration(
-                color: Colors.indigo.withValues(alpha: 0.08),
+                color: MetCueTheme.purple.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.indigo.withValues(alpha: 0.35)),
+                border: Border.all(
+                  color: MetCueTheme.purple.withValues(alpha: 0.35),
+                ),
               ),
               padding: const EdgeInsets.all(18),
               child: Column(
@@ -450,10 +579,14 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                       Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: Colors.indigo.withValues(alpha: 0.2),
+                          color: MetCueTheme.purple.withValues(alpha: 0.2),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.hub_rounded, size: 18, color: Colors.indigo),
+                        child: const Icon(
+                          Icons.hub_rounded,
+                          size: 18,
+                          color: MetCueTheme.purple,
+                        ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -464,12 +597,15 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                               'Cognitive Memory Anchors (1-Year Recall)',
                               style: theme.textTheme.titleMedium?.copyWith(
                                 fontWeight: FontWeight.bold,
-                                color: Colors.indigo.shade800,
+                                color: MetCueTheme.purple,
                               ),
                             ),
                             Text(
                               'How human memory actually recalls people: sensory cues & trigger scenarios',
-                              style: TextStyle(fontSize: 11, color: theme.hintColor),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: theme.hintColor,
+                              ),
                             ),
                           ],
                         ),
@@ -481,7 +617,11 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                   // 1. Distinctive Visual / Sensory Memory
                   Text(
                     '1. Visual or Quirky Detail (Sensory Anchor):',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.textTheme.bodyMedium?.color),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: theme.textTheme.bodyMedium?.color,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -490,11 +630,16 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                   ),
                   const SizedBox(height: 8),
                   TextFormField(
+                    scrollPadding: const EdgeInsets.only(top: 24, bottom: 96),
                     initialValue: _distinctiveMemory,
                     maxLines: 2,
                     decoration: const InputDecoration(
-                      hintText: 'e.g. Debated offline-first state machines; showed off sleek dark-mode prototype...',
-                      prefixIcon: Icon(Icons.visibility_outlined, color: Colors.indigo),
+                      hintText:
+                          'e.g. Debated offline-first state machines; showed off sleek dark-mode prototype...',
+                      prefixIcon: Icon(
+                        Icons.visibility_outlined,
+                        color: MetCueTheme.purple,
+                      ),
                       border: OutlineInputBorder(),
                     ),
                     onChanged: (v) => _distinctiveMemory = v,
@@ -504,7 +649,11 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                   // 2. Micro-Context / Scene
                   Text(
                     '2. Micro-Scene Context (Where in the venue?):',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.textTheme.bodyMedium?.color),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: theme.textTheme.bodyMedium?.color,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Wrap(
@@ -513,7 +662,10 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                     children: _microContextSuggestions.map((scene) {
                       final isSelected = _microContext == scene;
                       return ChoiceChip(
-                        label: Text(scene, style: const TextStyle(fontSize: 11)),
+                        label: Text(
+                          scene,
+                          style: const TextStyle(fontSize: 11),
+                        ),
                         selected: isSelected,
                         onSelected: (selected) {
                           setState(() {
@@ -521,16 +673,22 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                             _microContextController.text = _microContext;
                           });
                         },
-                        selectedColor: Colors.indigo.withValues(alpha: 0.25),
+                        selectedColor: MetCueTheme.purple.withValues(
+                          alpha: 0.25,
+                        ),
                       );
                     }).toList(),
                   ),
                   const SizedBox(height: 8),
                   TextFormField(
+                    scrollPadding: const EdgeInsets.only(top: 24, bottom: 96),
                     controller: _microContextController,
                     decoration: const InputDecoration(
                       hintText: 'Or custom scene: e.g. Front row after Q&A...',
-                      prefixIcon: Icon(Icons.place_outlined, color: Colors.indigo),
+                      prefixIcon: Icon(
+                        Icons.place_outlined,
+                        color: MetCueTheme.purple,
+                      ),
                       isDense: true,
                       border: OutlineInputBorder(),
                     ),
@@ -541,7 +699,11 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                   // 3. Situational "Call When..." Action Triggers
                   Text(
                     '3. "Call When..." Situational Triggers:',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.textTheme.bodyMedium?.color),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: theme.textTheme.bodyMedium?.color,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -555,7 +717,10 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                     children: _callWhenSuggestions.map((trigger) {
                       final isSelected = _callWhen.contains(trigger);
                       return FilterChip(
-                        label: Text(trigger, style: const TextStyle(fontSize: 11)),
+                        label: Text(
+                          trigger,
+                          style: const TextStyle(fontSize: 11),
+                        ),
                         selected: isSelected,
                         onSelected: (selected) {
                           setState(() {
@@ -579,7 +744,9 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
 
             // Person Details
             Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -587,10 +754,13 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                   children: [
                     Text(
                       'Person Details',
-                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 14),
                     TextFormField(
+                      scrollPadding: const EdgeInsets.only(top: 24, bottom: 96),
                       initialValue: _fullName,
                       decoration: const InputDecoration(
                         labelText: 'Full Name *',
@@ -598,7 +768,8 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                         prefixIcon: Icon(Icons.person),
                         border: OutlineInputBorder(),
                       ),
-                      validator: (v) => v == null || v.trim().isEmpty ? 'Enter name' : null,
+                      validator: (v) =>
+                          v == null || v.trim().isEmpty ? 'Enter name' : null,
                       onSaved: (v) => _fullName = v ?? '',
                     ),
                     const SizedBox(height: 12),
@@ -606,6 +777,10 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                       children: [
                         Expanded(
                           child: TextFormField(
+                            scrollPadding: const EdgeInsets.only(
+                              top: 24,
+                              bottom: 96,
+                            ),
                             initialValue: _role,
                             decoration: const InputDecoration(
                               labelText: 'Role',
@@ -618,6 +793,10 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: TextFormField(
+                            scrollPadding: const EdgeInsets.only(
+                              top: 24,
+                              bottom: 96,
+                            ),
                             initialValue: _company,
                             decoration: const InputDecoration(
                               labelText: 'Company / Studio',
@@ -631,10 +810,12 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
+                      scrollPadding: const EdgeInsets.only(top: 24, bottom: 96),
                       initialValue: _headline,
                       decoration: const InputDecoration(
                         labelText: 'Headline / Summary',
-                        hintText: 'e.g. Side project developer building Android & Flutter apps',
+                        hintText:
+                            'e.g. Side project developer building Android & Flutter apps',
                         prefixIcon: Icon(Icons.short_text),
                         border: OutlineInputBorder(),
                       ),
@@ -645,6 +826,10 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                       children: [
                         Expanded(
                           child: TextFormField(
+                            scrollPadding: const EdgeInsets.only(
+                              top: 24,
+                              bottom: 96,
+                            ),
                             initialValue: _email,
                             keyboardType: TextInputType.emailAddress,
                             decoration: const InputDecoration(
@@ -658,6 +843,10 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: TextFormField(
+                            scrollPadding: const EdgeInsets.only(
+                              top: 24,
+                              bottom: 96,
+                            ),
                             initialValue: _phone,
                             keyboardType: TextInputType.phone,
                             decoration: const InputDecoration(
@@ -679,7 +868,9 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
 
             // Skills & Tech Stack
             Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -687,11 +878,17 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.terminal_rounded, size: 20, color: Colors.blue),
+                        const Icon(
+                          Icons.terminal_rounded,
+                          size: 20,
+                          color: MetCueTheme.purple,
+                        ),
                         const SizedBox(width: 8),
                         Text(
                           'Tech Stack / Skills Tags',
-                          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ],
                     ),
@@ -705,6 +902,10 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                       children: [
                         Expanded(
                           child: TextField(
+                            scrollPadding: const EdgeInsets.only(
+                              top: 24,
+                              bottom: 96,
+                            ),
                             controller: _tagController,
                             decoration: const InputDecoration(
                               hintText: 'Add skill tag...',
@@ -729,7 +930,8 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
                         children: _techStack.map((t) {
                           return TagChip(
                             label: t,
-                            onDeleted: () => setState(() => _techStack.remove(t)),
+                            onDeleted: () =>
+                                setState(() => _techStack.remove(t)),
                           );
                         }).toList(),
                       ),
@@ -742,12 +944,17 @@ class _AddConnectionScreenState extends State<AddConnectionScreen> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
               ),
-              onPressed: _save,
+              onPressed: _saving ? null : _save,
               child: Text(
                 isEditing ? 'Update Connection' : 'Save Connection',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
             const SizedBox(height: 40),

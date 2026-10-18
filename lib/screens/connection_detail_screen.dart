@@ -1,14 +1,17 @@
+import '../theme/metcue_theme.dart';
+import '../widgets/face_avatar.dart';
+import '../widgets/follow_up_card.dart';
+import '../widgets/relationship_tools.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/saved_connection.dart';
 import '../models/event_context.dart';
 import '../providers/connections_provider.dart';
 import '../services/vcard_service.dart';
 import '../widgets/tag_chip.dart';
+import '../widgets/voice_capture_dialog.dart';
 import 'add_connection_screen.dart';
 
 class ConnectionDetailScreen extends StatelessWidget {
@@ -30,6 +33,16 @@ class ConnectionDetailScreen extends StatelessWidget {
       ),
     );
 
+    if (conn.id.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Connection unavailable')),
+        body: const Center(
+          child: Text(
+            'This connection was removed or belongs to another account.',
+          ),
+        ),
+      );
+    }
     final ev = conn.eventContext;
 
     return Scaffold(
@@ -64,17 +77,27 @@ class ConnectionDetailScreen extends StatelessWidget {
                 context: context,
                 builder: (ctx) => AlertDialog(
                   title: const Text('Delete Connection?'),
-                  content: Text('Remove ${conn.fullName} from your connections?'),
+                  content: Text(
+                    'Remove ${conn.fullName} from your connections?',
+                  ),
                   actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Cancel'),
+                    ),
                     ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                      ),
                       onPressed: () {
                         provider.deleteConnection(conn.id);
                         Navigator.pop(ctx);
                         Navigator.pop(context);
                       },
-                      child: const Text('Delete', style: TextStyle(color: Colors.white)),
+                      child: const Text(
+                        'Delete',
+                        style: TextStyle(color: Colors.white),
+                      ),
                     ),
                   ],
                 ),
@@ -88,125 +111,323 @@ class ConnectionDetailScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Header Card
             Container(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: theme.cardColor,
                 borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 14,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
               ),
-              child: Column(
-                children: [
-                  CircleAvatar(
-                    radius: 36,
-                    backgroundColor: Colors.blue.withValues(alpha: 0.15),
-                    child: Text(
-                      conn.fullName.isNotEmpty
-                          ? conn.fullName.trim().split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join()
-                          : '?',
-                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.blue),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    conn.fullName,
-                    style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                  if (conn.role.isNotEmpty || conn.company.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      [if (conn.role.isNotEmpty) conn.role, if (conn.company.isNotEmpty) conn.company].join(' @ '),
-                      style: TextStyle(fontSize: 14, color: theme.hintColor, fontWeight: FontWeight.w500),
-                    ),
-                  ],
-                  if (conn.headline.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      conn.headline,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // Event Memory Block (Context Recall)
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Colors.amber.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
-              ),
-              child: Column(
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.psychology_alt_rounded, color: Colors.amber, size: 22),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Meeting Memory Context',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.amber.shade900,
-                        ),
-                      ),
-                    ],
+                  FaceAvatar(
+                    name: conn.fullName,
+                    photo: conn.avatarUrl,
+                    radius: 28,
+                    backgroundColor: MetCueTheme.purple.withValues(alpha: .15),
+                    foregroundColor: MetCueTheme.purple,
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const Icon(Icons.event, size: 16, color: Colors.amber),
-                      const SizedBox(width: 6),
-                      Text(
-                        ev.eventName.isNotEmpty ? ev.eventName : 'Met at Networking',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                      ),
-                      const Spacer(),
-                      Text(
-                        DateFormat('MMM d, y').format(ev.date),
-                        style: TextStyle(fontSize: 12, color: theme.hintColor),
-                      ),
-                    ],
-                  ),
-                  if (ev.location.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Row(
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.location_on_outlined, size: 16, color: theme.hintColor),
-                        const SizedBox(width: 6),
-                        Text(ev.location, style: TextStyle(fontSize: 12, color: theme.hintColor)),
+                        Text(
+                          conn.fullName,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (conn.role.isNotEmpty || conn.company.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              [
+                                if (conn.role.isNotEmpty) conn.role,
+                                if (conn.company.isNotEmpty) conn.company,
+                              ].join(' · '),
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                          ),
+                        if (conn.headline.isNotEmpty &&
+                            conn.headline.trim().toLowerCase() !=
+                                conn.role.trim().toLowerCase())
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              conn.headline,
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          ),
                       ],
                     ),
-                  ],
-                  if (ev.notes.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    const Divider(height: 1),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'Discussion / What They Do:',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      ev.notes,
-                      style: const TextStyle(fontSize: 13, height: 1.4),
-                    ),
-                  ],
+                  ),
                 ],
               ),
             ),
+            const SizedBox(height: 12),
+            // Direct Communication Actions
+            if (conn.phone.isNotEmpty ||
+                conn.email.isNotEmpty ||
+                conn.links.isNotEmpty)
+              Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Contact & Connect',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      if (conn.phone.isNotEmpty)
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const CircleAvatar(
+                            child: Icon(Icons.phone, size: 18),
+                          ),
+                          title: Text(
+                            conn.phone,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: const Text('Phone Number'),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.call,
+                                  color: Colors.green,
+                                ),
+                                onPressed: () =>
+                                    launchUrl(Uri.parse('tel:${conn.phone}')),
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.sms,
+                                  color: MetCueTheme.purple,
+                                ),
+                                onPressed: () =>
+                                    launchUrl(Uri.parse('sms:${conn.phone}')),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (conn.email.isNotEmpty)
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const CircleAvatar(
+                            child: Icon(Icons.email, size: 18),
+                          ),
+                          title: Text(
+                            conn.email,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: const Text('Email Address'),
+                          trailing: IconButton(
+                            icon: const Icon(
+                              Icons.send_rounded,
+                              color: MetCueTheme.purple,
+                            ),
+                            onPressed: () =>
+                                launchUrl(Uri.parse('mailto:${conn.email}')),
+                          ),
+                        ),
+                      ...conn.links.map((link) {
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: CircleAvatar(
+                            child: Icon(link.defaultIcon, size: 18),
+                          ),
+                          title: Text(link.title),
+                          subtitle: Text(
+                            link.url,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          trailing: const Icon(Icons.open_in_new, size: 18),
+                          onTap: () async {
+                            final uri = Uri.tryParse(link.url);
+                            if (uri != null && await canLaunchUrl(uri)) {
+                              await launchUrl(uri);
+                            }
+                          },
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+
+            FilledButton.icon(
+              onPressed: () => showDialog(
+                context: context,
+                builder: (_) => VoiceCaptureDialog(
+                  connection: conn,
+                  onCaptured: (updated) => provider.updateConnection(
+                    updated,
+                    expectedVersion: conn.updatedAt,
+                  ),
+                ),
+              ),
+              icon: const Icon(Icons.mic),
+              label: const Text('Add a memory cue'),
+            ),
+
+            // Export to Phone Contacts (vCard)
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              icon: const Icon(Icons.person_add_alt_1_rounded),
+              label: const Text(
+                'Save to phone contacts',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              onPressed: () async {
+                final box = context.findRenderObject() as RenderBox?;
+                try {
+                  await VCardService.exportContact(
+                    vcard: VCardService.generateConnectionVCard(conn),
+                    name: conn.fullName,
+                    sharePositionOrigin: box == null
+                        ? null
+                        : box.localToGlobal(Offset.zero) & box.size,
+                  );
+                } catch (_) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Could not open contacts. Please try again.',
+                        ),
+                        duration: Duration(seconds: 3),
+                      ),
+                    );
+                  }
+                }
+              },
+            ),
+
+            // Only show meeting context that the user actually saved.
+            if (ev.eventName.isNotEmpty ||
+                ev.location.isNotEmpty ||
+                ev.notes.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: MetCueTheme.purple.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: MetCueTheme.purple.withValues(alpha: 0.4),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.psychology_alt_rounded,
+                          color: MetCueTheme.purple,
+                          size: 22,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Where you met',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: MetCueTheme.purple,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.event,
+                          size: 16,
+                          color: MetCueTheme.purple,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            ev.eventName.isNotEmpty
+                                ? ev.eventName
+                                : 'Meeting details',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          DateFormat('MMM d, y').format(ev.date),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: theme.hintColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (ev.location.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.location_on_outlined,
+                            size: 16,
+                            color: theme.hintColor,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              ev.location,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: theme.hintColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    if (ev.notes.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      const Divider(height: 1),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'What you talked about',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        ev.notes,
+                        style: const TextStyle(fontSize: 13, height: 1.4),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
 
             // Message to Future Self
             if (conn.futureSelfNote.isNotEmpty || conn.vibeTags.isNotEmpty) ...[
@@ -215,7 +436,7 @@ class ConnectionDetailScreen extends StatelessWidget {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                   side: BorderSide(
-                    color: Colors.amber.withValues(alpha: 0.35),
+                    color: MetCueTheme.purple.withValues(alpha: 0.35),
                     width: 1,
                   ),
                 ),
@@ -227,13 +448,19 @@ class ConnectionDetailScreen extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.mail_outline_rounded, size: 18, color: Colors.amber),
+                          const Icon(
+                            Icons.mail_outline_rounded,
+                            size: 18,
+                            color: MetCueTheme.purple,
+                          ),
                           const SizedBox(width: 8),
-                          Text(
-                            'Message to My Future Self',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.amber,
+                          Expanded(
+                            child: Text(
+                              'Message to My Future Self',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: MetCueTheme.purple,
+                              ),
                             ),
                           ),
                         ],
@@ -243,9 +470,11 @@ class ConnectionDetailScreen extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.amber.withValues(alpha: 0.06),
+                            color: MetCueTheme.purple.withValues(alpha: 0.06),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.amber.withValues(alpha: 0.15)),
+                            border: Border.all(
+                              color: MetCueTheme.purple.withValues(alpha: 0.15),
+                            ),
                           ),
                           child: Text(
                             '"${conn.futureSelfNote.startsWith('Note to Future Self:') ? conn.futureSelfNote.substring(20).trim() : conn.futureSelfNote}"',
@@ -265,8 +494,10 @@ class ConnectionDetailScreen extends StatelessWidget {
                           children: conn.vibeTags.map((vibe) {
                             return TagChip(
                               label: '✨ $vibe',
-                              backgroundColor: Colors.purple.withValues(alpha: 0.12),
-                              textColor: Colors.purple.shade300,
+                              backgroundColor: Color(
+                                0xFF6554C0,
+                              ).withValues(alpha: 0.12),
+                              textColor: MetCueTheme.purple,
                             );
                           }).toList(),
                         ),
@@ -278,13 +509,15 @@ class ConnectionDetailScreen extends StatelessWidget {
             ],
 
             // Cognitive Memory Anchors (1-Year Recall)
-            if (conn.distinctiveMemory.isNotEmpty || conn.microContext.isNotEmpty || conn.callWhen.isNotEmpty) ...[
+            if (conn.distinctiveMemory.isNotEmpty ||
+                conn.microContext.isNotEmpty ||
+                conn.callWhen.isNotEmpty) ...[
               const SizedBox(height: 18),
               Card(
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                   side: BorderSide(
-                    color: Colors.indigo.withValues(alpha: 0.35),
+                    color: MetCueTheme.purple.withValues(alpha: 0.35),
                     width: 1,
                   ),
                 ),
@@ -296,13 +529,19 @@ class ConnectionDetailScreen extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.hub_rounded, size: 18, color: Colors.indigo),
+                          const Icon(
+                            Icons.hub_rounded,
+                            size: 18,
+                            color: MetCueTheme.purple,
+                          ),
                           const SizedBox(width: 8),
-                          Text(
-                            'Cognitive Recall Anchors',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.indigo,
+                          Expanded(
+                            child: Text(
+                              'Cognitive Recall Anchors',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: MetCueTheme.purple,
+                              ),
                             ),
                           ),
                         ],
@@ -311,18 +550,29 @@ class ConnectionDetailScreen extends StatelessWidget {
                         const SizedBox(height: 12),
                         const Text(
                           'Visual & Sensory Quirk (Memory Cue):',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                            color: MetCueTheme.muted,
+                          ),
                         ),
                         const SizedBox(height: 4),
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(Icons.visibility_outlined, size: 15, color: Colors.indigo),
+                            const Icon(
+                              Icons.visibility_outlined,
+                              size: 15,
+                              color: MetCueTheme.purple,
+                            ),
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
                                 conn.distinctiveMemory,
-                                style: const TextStyle(fontSize: 13, height: 1.35),
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  height: 1.35,
+                                ),
                               ),
                             ),
                           ],
@@ -331,17 +581,30 @@ class ConnectionDetailScreen extends StatelessWidget {
                       if (conn.microContext.isNotEmpty) ...[
                         const SizedBox(height: 12),
                         const Text(
-                          'Micro-Scene Context:',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey),
+                          'What you remember',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                            color: MetCueTheme.muted,
+                          ),
                         ),
                         const SizedBox(height: 4),
                         Row(
                           children: [
-                            const Icon(Icons.place_outlined, size: 15, color: Colors.indigo),
+                            const Icon(
+                              Icons.place_outlined,
+                              size: 15,
+                              color: MetCueTheme.purple,
+                            ),
                             const SizedBox(width: 6),
-                            Text(
-                              conn.microContext,
-                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                            Expanded(
+                              child: Text(
+                                conn.microContext,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -349,8 +612,12 @@ class ConnectionDetailScreen extends StatelessWidget {
                       if (conn.callWhen.isNotEmpty) ...[
                         const SizedBox(height: 12),
                         const Text(
-                          'Situational "Call When..." Triggers:',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey),
+                          'Reach out about',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                            color: MetCueTheme.muted,
+                          ),
                         ),
                         const SizedBox(height: 6),
                         Wrap(
@@ -359,8 +626,10 @@ class ConnectionDetailScreen extends StatelessWidget {
                           children: conn.callWhen.map((trigger) {
                             return TagChip(
                               label: '📞 $trigger',
-                              backgroundColor: Colors.teal.withValues(alpha: 0.12),
-                              textColor: Colors.teal.shade300,
+                              backgroundColor: Colors.teal.withValues(
+                                alpha: 0.12,
+                              ),
+                              textColor: Color(0xFF326C68),
                             );
                           }).toList(),
                         ),
@@ -373,27 +642,39 @@ class ConnectionDetailScreen extends StatelessWidget {
 
             const SizedBox(height: 20),
 
-            // Tech Stack & Skills
+            // Skills & interests
             if (conn.techStack.isNotEmpty || ev.tags.isNotEmpty) ...[
               Card(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Tech Stack & Skills',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        'Skills & interests',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
                       ),
                       const SizedBox(height: 10),
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
-                        children: {
-                          ...conn.techStack,
-                          ...ev.tags,
-                        }.map((t) => TagChip(label: t, backgroundColor: Colors.blue.withValues(alpha: 0.1), textColor: Colors.blue)).toList(),
+                        children: {...conn.techStack, ...ev.tags}
+                            .map(
+                              (t) => TagChip(
+                                label: t,
+                                backgroundColor: Color(
+                                  0xFF6554C0,
+                                ).withValues(alpha: 0.1),
+                                textColor: MetCueTheme.purple,
+                              ),
+                            )
+                            .toList(),
                       ),
                     ],
                   ),
@@ -402,87 +683,31 @@ class ConnectionDetailScreen extends StatelessWidget {
               const SizedBox(height: 20),
             ],
 
-            // Direct Communication Actions
-            Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Contact & Connect', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                    const SizedBox(height: 12),
-                    if (conn.phone.isNotEmpty)
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const CircleAvatar(child: Icon(Icons.phone, size: 18)),
-                        title: Text(conn.phone),
-                        subtitle: const Text('Phone Number'),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.call, color: Colors.green),
-                              onPressed: () => launchUrl(Uri.parse('tel:${conn.phone}')),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.sms, color: Colors.blue),
-                              onPressed: () => launchUrl(Uri.parse('sms:${conn.phone}')),
-                            ),
-                          ],
-                        ),
-                      ),
-                    if (conn.email.isNotEmpty)
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const CircleAvatar(child: Icon(Icons.email, size: 18)),
-                        title: Text(conn.email),
-                        subtitle: const Text('Email Address'),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.send_rounded, color: Colors.blue),
-                          onPressed: () => launchUrl(Uri.parse('mailto:${conn.email}')),
-                        ),
-                      ),
-                    ...conn.links.map((link) {
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: CircleAvatar(child: Icon(link.defaultIcon, size: 18)),
-                        title: Text(link.title),
-                        subtitle: Text(link.url, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        trailing: const Icon(Icons.open_in_new, size: 18),
-                        onTap: () async {
-                          final uri = Uri.tryParse(link.url);
-                          if (uri != null && await canLaunchUrl(uri)) {
-                            await launchUrl(uri);
-                          }
-                        },
-                      );
-                    }),
-                  ],
-                ),
-              ),
-            ),
-
             const SizedBox(height: 24),
 
-            // Export to Phone Contacts (vCard)
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-              icon: const Icon(Icons.person_add_alt_1_rounded),
-              label: const Text('Export vCard to Phone Contacts', style: TextStyle(fontWeight: FontWeight.bold)),
-              onPressed: () {
-                final vcard = VCardService.generateConnectionVCard(conn);
-                Clipboard.setData(ClipboardData(text: vcard));
-                Share.share(
-                  vcard,
-                  subject: '${conn.fullName} - vCard',
-                );
-              },
+            ExpansionTile(
+              title: const Text('Notes & activity'),
+              subtitle: const Text('Memories, conversations and follow-ups'),
+              children: [
+                const SizedBox(height: 16),
+                FollowUpCard(connection: conn),
+                RelationshipTools(connection: conn),
+                if (conn.rawCue.isNotEmpty)
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text('Your original memory\n${conn.rawCue}'),
+                    ),
+                  ),
+                for (final turn in conn.cueConversation)
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text('${turn['question']}\n${turn['answer']}'),
+                    ),
+                  ),
+              ],
             ),
-
             const SizedBox(height: 40),
           ],
         ),

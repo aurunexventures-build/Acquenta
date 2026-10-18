@@ -1,3 +1,4 @@
+import 'recall_query.dart';
 import '../models/saved_connection.dart';
 import 'cognitive_semantic_engine.dart';
 
@@ -18,14 +19,39 @@ class SearchResult {
 }
 
 class SearchService {
-  static const Set<String> _stopWords = {
-    'i', 'me', 'my', 'we', 'our', 'you', 'he', 'him', 'his', 'she', 'her',
-    'they', 'them', 'the', 'a', 'an', 'is', 'was', 'are', 'were', 'been',
-    'met', 'meet', 'meeting', 'person', 'someone', 'guy',
-    'who', 'what', 'which', 'that', 'this', 'there', 'at', 'on', 'in',
-    'with', 'about', 'told', 'doing', 'does', 'did', 'and', 'or', 'to',
-    'for', 'from', 'of', 'by', 'hosted', 'talked',
-  };
+  static List<String> queryTerms(String query) => RecallQuery.terms(query);
+
+  static bool supportsIntent(SavedConnection connection, String query) =>
+      RecallQuery.supportsProfessionalIntent(
+        query,
+        [
+          connection.role,
+          connection.headline,
+          ...connection.techStack,
+          connection.rawCue,
+        ].join(' '),
+      );
+
+  static int matchedTermCount(SavedConnection connection, String query) {
+    final evidence = [
+      connection.fullName,
+      connection.role,
+      connection.company,
+      connection.headline,
+      ...connection.techStack,
+      connection.eventContext.eventName,
+      connection.eventContext.notes,
+      connection.rawCue,
+      connection.distinctiveMemory,
+      connection.microContext,
+      connection.futureSelfNote,
+      ...connection.callWhen,
+      ...connection.interactions.map((item) => item.text),
+    ].join(' ');
+    return queryTerms(
+      query,
+    ).where((term) => RecallQuery.containsPhrase(evidence, term)).length;
+  }
 
   /// Performs contextual memory recall search across connections
   static List<SearchResult> search({
@@ -36,32 +62,28 @@ class SearchService {
     String? filterVibe,
   }) {
     final cleanedQuery = query.trim().toLowerCase();
-    
-    // Extract tokens excluding trivial stop words
-    final rawTokens = cleanedQuery
-        .replaceAll(RegExp(r'[^\w\s\+#]'), ' ')
-        .split(RegExp(r'\s+'))
-        .map((t) => t.trim())
-        .where((t) => t.isNotEmpty)
-        .toList();
 
-    final searchTokens = rawTokens
-        .where((t) => !_stopWords.contains(t) && t.length > 1)
-        .toList();
+    final searchTokens = queryTerms(query);
+    // A nonempty request made only of filler words must not recall everyone.
+    if (cleanedQuery.isNotEmpty && searchTokens.isEmpty) return [];
 
     final results = <SearchResult>[];
 
     for (final conn in connections) {
+      if (!supportsIntent(conn, query)) continue;
       // Event filter check
       if (filterEvent != null && filterEvent.isNotEmpty) {
-        if (!conn.eventContext.eventName.toLowerCase().contains(filterEvent.toLowerCase())) {
+        if (!conn.eventContext.eventName.toLowerCase().contains(
+          filterEvent.toLowerCase(),
+        )) {
           continue;
         }
       }
 
       // Tech stack filter check
       if (filterTechStack != null && filterTechStack.isNotEmpty) {
-        final hasTech = conn.techStack.any(
+        final hasTech =
+            conn.techStack.any(
               (t) => t.toLowerCase() == filterTechStack.toLowerCase(),
             ) ||
             conn.eventContext.tags.any(
@@ -84,15 +106,17 @@ class SearchService {
 
       // If query is empty but filters are applied, return all matching connections
       if (cleanedQuery.isEmpty) {
-        results.add(SearchResult(
-          connection: conn,
-          score: 1.0,
-          matchReasons: [
-            if (filterEvent != null) 'Event: "$filterEvent"',
-            if (filterTechStack != null) 'Skill: "$filterTechStack"',
-            if (filterVibe != null) 'Vibe: "$filterVibe"',
-          ],
-        ));
+        results.add(
+          SearchResult(
+            connection: conn,
+            score: 1.0,
+            matchReasons: [
+              if (filterEvent != null) 'Event: "$filterEvent"',
+              if (filterTechStack != null) 'Skill: "$filterTechStack"',
+              if (filterVibe != null) 'Vibe: "$filterVibe"',
+            ],
+          ),
+        );
         continue;
       }
 
@@ -107,6 +131,15 @@ class SearchService {
       final companyLower = conn.company.toLowerCase();
       final headlineLower = conn.headline.toLowerCase();
       final futureSelfLower = conn.futureSelfNote.toLowerCase();
+      final memoryFields = {
+        'Original cue': conn.rawCue,
+        'Interaction history': conn.interactions.map((e) => e.text).join(' '),
+        'Follow-up': conn.followUpNote,
+        'Conversation': conn.cueConversation.map((e) => e['answer']).join(' '),
+        'Distinctive memory': conn.distinctiveMemory,
+        'Meeting scene': conn.microContext,
+        'Reach out when': conn.callWhen.join(', '),
+      };
 
       // Combine tags and tech stack
       final allTags = {
@@ -116,19 +149,26 @@ class SearchService {
 
       // 1. Full phrase matches
       if (eventNameLower.isNotEmpty &&
-          (cleanedQuery.contains(eventNameLower) || eventNameLower.contains(cleanedQuery))) {
+          (cleanedQuery.contains(eventNameLower) ||
+              eventNameLower.contains(cleanedQuery))) {
         score += 80.0;
         matchReasons.add('Event: "${conn.eventContext.eventName}"');
       }
       if (eventNotesLower.isNotEmpty &&
-          (cleanedQuery.contains(eventNotesLower) || eventNotesLower.contains(cleanedQuery))) {
+          (cleanedQuery.contains(eventNotesLower) ||
+              eventNotesLower.contains(cleanedQuery))) {
         score += 60.0;
-        matchReasons.add('Meeting Notes: "${_snippet(conn.eventContext.notes, cleanedQuery)}"');
+        matchReasons.add(
+          'Meeting Notes: "${_snippet(conn.eventContext.notes, cleanedQuery)}"',
+        );
       }
       if (futureSelfLower.isNotEmpty &&
-          (cleanedQuery.contains(futureSelfLower) || futureSelfLower.contains(cleanedQuery))) {
+          (cleanedQuery.contains(futureSelfLower) ||
+              futureSelfLower.contains(cleanedQuery))) {
         score += 75.0;
-        matchReasons.add('Note to Future Self: "${_snippet(conn.futureSelfNote, cleanedQuery)}"');
+        matchReasons.add(
+          'Note to Future Self: "${_snippet(conn.futureSelfNote, cleanedQuery)}"',
+        );
       }
 
       // 2. Token based matching
@@ -138,11 +178,13 @@ class SearchService {
       final matchedVibeTokens = <String>{};
       final matchedFutureTokens = <String>{};
 
-      for (final token in searchTokens.isNotEmpty ? searchTokens : rawTokens) {
+      for (final token in searchTokens) {
         // Vibe Tags Match (High priority for human impression / intent)
         for (final vibe in conn.vibeTags) {
           final vibeLower = vibe.toLowerCase();
-          if ((vibeLower == token || vibeLower.contains(token)) && !matchedVibeTokens.contains(vibeLower)) {
+          if ((vibeLower == token ||
+                  RecallQuery.containsPhrase(vibeLower, token)) &&
+              !matchedVibeTokens.contains(vibeLower)) {
             matchedVibeTokens.add(vibeLower);
             score += (vibeLower == token) ? 55.0 : 40.0;
             matchReasons.add('Vibe: "$vibe"');
@@ -150,14 +192,18 @@ class SearchService {
         }
 
         // Note to Future Self Match (The personal touch / gut instinct)
-        if (futureSelfLower.contains(token) && !matchedFutureTokens.contains(token)) {
+        if (RecallQuery.containsPhrase(futureSelfLower, token) &&
+            !matchedFutureTokens.contains(token)) {
           matchedFutureTokens.add(token);
           score += 45.0;
-          matchReasons.add('Future Self: "${_snippet(conn.futureSelfNote, token)}"');
+          matchReasons.add(
+            'Future Self: "${_snippet(conn.futureSelfNote, token)}"',
+          );
         }
 
         // Event Name Match
-        if (eventNameLower.contains(token) && !matchedEventTokens.contains(token)) {
+        if (RecallQuery.containsPhrase(eventNameLower, token) &&
+            !matchedEventTokens.contains(token)) {
           matchedEventTokens.add(token);
           score += 20.0;
           matchReasons.add('Event: "${conn.eventContext.eventName}"');
@@ -165,7 +211,8 @@ class SearchService {
 
         // Tech Stack / Skills Match (Direct skill match is prioritized)
         for (final tag in allTags) {
-          if ((tag == token || tag.contains(token)) && !matchedTechTokens.contains(tag)) {
+          if ((tag == token || RecallQuery.containsPhrase(tag, token)) &&
+              !matchedTechTokens.contains(tag)) {
             matchedTechTokens.add(tag);
             score += (tag == token) ? 60.0 : 35.0;
             final originalTag = conn.techStack.firstWhere(
@@ -180,37 +227,62 @@ class SearchService {
         }
 
         // Event Notes Match (Discussion memory)
-        if (eventNotesLower.contains(token) && !matchedNotesTokens.contains(token)) {
+        if (RecallQuery.containsPhrase(eventNotesLower, token) &&
+            !matchedNotesTokens.contains(token)) {
           matchedNotesTokens.add(token);
           score += 25.0;
-          matchReasons.add('Discussion: "${_snippet(conn.eventContext.notes, token)}"');
+          matchReasons.add(
+            'Discussion: "${_snippet(conn.eventContext.notes, token)}"',
+          );
         }
 
         // Role & Headline Match
-        if (roleLower.contains(token) || headlineLower.contains(token)) {
+        if (RecallQuery.containsPhrase(roleLower, token) ||
+            RecallQuery.containsPhrase(headlineLower, token)) {
           score += 15.0;
-          matchReasons.add('Role: "${conn.role.isNotEmpty ? conn.role : conn.headline}"');
+          matchReasons.add(
+            'Role: "${conn.role.isNotEmpty ? conn.role : conn.headline}"',
+          );
         }
 
         // Company Match
-        if (companyLower.contains(token)) {
+        if (RecallQuery.containsPhrase(companyLower, token)) {
           score += 12.0;
           matchReasons.add('Company: "${conn.company}"');
         }
 
         // Location Match
-        if (eventLocLower.contains(token)) {
+        if (RecallQuery.containsPhrase(eventLocLower, token)) {
           score += 10.0;
           matchReasons.add('Location: "${conn.eventContext.location}"');
         }
 
         // Name Match
-        if (fullNameLower.contains(token)) {
+        if (RecallQuery.containsPhrase(fullNameLower, token)) {
           score += 15.0;
           matchReasons.add('Name: "${conn.fullName}"');
         }
       }
 
+      for (final entry in memoryFields.entries) {
+        final value = entry.value.toLowerCase();
+        final matches = searchTokens
+            .where((token) => RecallQuery.containsPhrase(value, token))
+            .toSet();
+        if (matches.isNotEmpty) {
+          score += matches.length * 40;
+          matchReasons.add(
+            '${entry.key}: "${_snippet(entry.value, matches.first)}"',
+          );
+        }
+      }
+      // Each requested profession is an independent direct match. A query
+      // such as "plumber and developer" includes either role, not only one.
+      final roleTerms = searchTokens.where(
+        (term) =>
+            term.length >= 3 && RecallQuery.containsPhrase(roleLower, term),
+      );
+      score += roleTerms.length * 200;
       // 3. Cognitive Semantic Spreading Activation Engine
       final activation = CognitiveSemanticEngine.computeActivation(
         query: cleanedQuery,
@@ -224,7 +296,8 @@ class SearchService {
         futureSelfNote: conn.futureSelfNote,
       );
 
-      final double cognitiveScore = (activation['score'] as num?)?.toDouble() ?? 0.0;
+      final double cognitiveScore =
+          (activation['score'] as num?)?.toDouble() ?? 0.0;
       final String cognitiveReason = activation['reason'] as String? ?? '';
       final String activatedDomain = activation['concept'] as String? ?? '';
 
@@ -236,18 +309,30 @@ class SearchService {
       }
 
       if (score > 0) {
-        results.add(SearchResult(
-          connection: conn,
-          score: score,
-          matchReasons: matchReasons.toList(),
-          cognitiveReason: cognitiveReason,
-          activatedDomain: activatedDomain,
-        ));
+        results.add(
+          SearchResult(
+            connection: conn,
+            score: score,
+            matchReasons: matchReasons.toList(),
+            cognitiveReason: cognitiveReason,
+            activatedDomain: activatedDomain,
+          ),
+        );
       }
     }
 
     // Sort by relevance score descending
-    results.sort((a, b) => b.score.compareTo(a.score));
+    results.sort((a, b) {
+      final direct = matchedTermCount(
+        b.connection,
+        query,
+      ).compareTo(matchedTermCount(a.connection, query));
+      if (direct != 0) return direct;
+      final relevance = b.score.compareTo(a.score);
+      return relevance != 0
+          ? relevance
+          : b.connection.savedAt.compareTo(a.connection.savedAt);
+    });
     return results;
   }
 
@@ -263,7 +348,9 @@ class SearchService {
   }
 
   /// Extracts unique tech stack tags across connections
-  static List<String> extractUniqueTechStacks(List<SavedConnection> connections) {
+  static List<String> extractUniqueTechStacks(
+    List<SavedConnection> connections,
+  ) {
     final tags = <String>{};
     for (final c in connections) {
       tags.addAll(c.techStack);
@@ -289,7 +376,9 @@ class SearchService {
     if (fullText.isEmpty) return '';
     final index = fullText.toLowerCase().indexOf(match.toLowerCase());
     if (index == -1) {
-      return fullText.length > 50 ? '${fullText.substring(0, 47)}...' : fullText;
+      return fullText.length > 50
+          ? '${fullText.substring(0, 47)}...'
+          : fullText;
     }
     final start = (index - 20) > 0 ? (index - 20) : 0;
     final end = (index + match.length + 25) < fullText.length

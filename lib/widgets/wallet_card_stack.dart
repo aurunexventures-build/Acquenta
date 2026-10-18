@@ -1,4 +1,8 @@
+import 'face_avatar.dart';
+import 'social_icon_row.dart';
 import 'package:flutter/material.dart';
+import '../screens/receive_card_screen.dart';
+import 'qr_share_dialog.dart';
 import '../models/contact_card.dart';
 import '../models/event_context.dart';
 import 'interactive_card_view.dart';
@@ -56,7 +60,9 @@ class _WalletCardStackState extends State<WalletCardStack> {
               Row(
                 children: [
                   Icon(
-                    isExpanded ? Icons.credit_card_rounded : Icons.wallet_rounded,
+                    isExpanded
+                        ? Icons.credit_card_rounded
+                        : Icons.wallet_rounded,
                     size: 16,
                     color: Colors.white70,
                   ),
@@ -77,20 +83,34 @@ class _WalletCardStackState extends State<WalletCardStack> {
               if (isExpanded)
                 TextButton.icon(
                   onPressed: _collapseStack,
-                  icon: const Icon(Icons.layers_outlined, size: 14, color: Colors.blueAccent),
+                  icon: const Icon(
+                    Icons.layers_outlined,
+                    size: 14,
+                    color: Colors.blueAccent,
+                  ),
                   label: const Text(
                     'View All Cards',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blueAccent),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.blueAccent,
+                    ),
                   ),
                   style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     visualDensity: VisualDensity.compact,
                   ),
                 )
               else
                 Text(
                   'Tap to expand',
-                  style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.4)),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.white.withValues(alpha: 0.4),
+                  ),
                 ),
             ],
           ),
@@ -107,39 +127,89 @@ class _WalletCardStackState extends State<WalletCardStack> {
     );
   }
 
-  Widget _buildStackedWallet(BuildContext context) {
-    // Height needed for the overlapping deck: base card height (~220) + 80px per extra card
-    const double cardPeekOffset = 76.0;
-    final double stackHeight = 240.0 + ((widget.cards.length - 1) * cardPeekOffset);
-
-    return SizedBox(
-      height: stackHeight,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: List.generate(widget.cards.length, (index) {
-          final card = widget.cards[index];
-          final topOffset = index * cardPeekOffset;
-
-          return Positioned(
-            top: topOffset,
-            left: 0,
-            right: 0,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 350),
-              curve: Curves.easeOutCubic,
-              transform: Matrix4.identity()..scale(1.0 - (index * 0.015)),
-              child: InteractiveCardView(
-                card: card,
-                activeEvent: widget.activeEvent,
-                isExpanded: false,
-                onCardTapped: () => _expandCard(index),
+  Widget _buildStackedWallet(BuildContext context) => Column(
+    children: List.generate(widget.cards.length, (index) {
+      final card = widget.cards[index];
+      final color = Color(
+        int.tryParse(
+              'FF${card.themeColorHex.replaceAll('#', '')}',
+              radix: 16,
+            ) ??
+            0xFF2563EB,
+      );
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Material(
+          color: color.withValues(alpha: .10),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: color.withValues(alpha: .25)),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => _expandCard(index),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  FaceAvatar(
+                    name: card.fullName,
+                    photo: card.avatarUrl,
+                    radius: 24,
+                    backgroundColor: color.withValues(alpha: .25),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                card.fullName,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            if (card.links.isNotEmpty)
+                              Flexible(
+                                child: SocialIconRow(
+                                  links: card.links,
+                                  color: Colors.white70,
+                                ),
+                              ),
+                          ],
+                        ),
+                        Text(
+                          card.role.isEmpty ? card.title : card.role,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white60,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    card.isDefault
+                        ? Icons.star_rounded
+                        : Icons.chevron_right_rounded,
+                    size: 18,
+                    color: card.isDefault ? Colors.amber : Colors.white38,
+                  ),
+                ],
               ),
             ),
-          );
-        }),
-      ),
-    );
-  }
+          ),
+        ),
+      );
+    }),
+  );
 
   Widget _buildExpandedView(BuildContext context, int index) {
     final card = widget.cards[index];
@@ -155,7 +225,9 @@ class _WalletCardStackState extends State<WalletCardStack> {
           onEditTapped: () {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => CardEditorScreen(initialCard: card)),
+              MaterialPageRoute(
+                builder: (_) => CardEditorScreen(initialCard: card),
+              ),
             );
           },
         ),
@@ -181,7 +253,9 @@ class _WalletCardStackState extends State<WalletCardStack> {
                     height: 6,
                     margin: const EdgeInsets.symmetric(horizontal: 3),
                     decoration: BoxDecoration(
-                      color: dotIndex == index ? Colors.blueAccent : Colors.white24,
+                      color: dotIndex == index
+                          ? Colors.blueAccent
+                          : Colors.white24,
                       borderRadius: BorderRadius.circular(3),
                     ),
                   ),
@@ -190,8 +264,12 @@ class _WalletCardStackState extends State<WalletCardStack> {
               const SizedBox(width: 8),
               IconButton(
                 icon: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                color: index < widget.cards.length - 1 ? Colors.white70 : Colors.white24,
-                onPressed: index < widget.cards.length - 1 ? () => _expandCard(index + 1) : null,
+                color: index < widget.cards.length - 1
+                    ? Colors.white70
+                    : Colors.white24,
+                onPressed: index < widget.cards.length - 1
+                    ? () => _expandCard(index + 1)
+                    : null,
               ),
             ],
           ),
@@ -209,29 +287,19 @@ class _WalletCardStackState extends State<WalletCardStack> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'BEAMING & SHARING MODES',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.8,
-                  color: Colors.white60,
-                ),
-              ),
-              const SizedBox(height: 12),
               Row(
                 children: [
                   Expanded(
                     child: _buildActionTile(
-                      icon: Icons.nfc_rounded,
-                      title: 'NFC Tap',
-                      subtitle: 'Hold near phone',
+                      icon: Icons.qr_code_scanner,
+                      title: 'Scan',
+                      subtitle: 'Scan into wallet',
                       color: Colors.amberAccent,
                       onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('NFC Ready: Hold your phone or MetCue ring against their device.'),
-                            duration: Duration(seconds: 2),
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ReceiveCardScreen(),
                           ),
                         );
                       },
@@ -241,10 +309,16 @@ class _WalletCardStackState extends State<WalletCardStack> {
                   Expanded(
                     child: _buildActionTile(
                       icon: Icons.qr_code_2_rounded,
-                      title: 'QR Code',
-                      subtitle: 'Tap card to flip',
+                      title: 'Share',
+                      subtitle: 'Share this identity',
                       color: Colors.blueAccent,
-                      onTap: () {},
+                      onTap: () => showDialog(
+                        context: context,
+                        builder: (_) => QrShareDialog(
+                          card: card,
+                          defaultEventContext: widget.activeEvent,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -283,11 +357,11 @@ class _WalletCardStackState extends State<WalletCardStack> {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
-                  ),
-                  Text(
-                    subtitle,
-                    style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.6)),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                   ),
                 ],
               ),
@@ -311,18 +385,29 @@ class _WalletCardStackState extends State<WalletCardStack> {
                 color: Colors.blue.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.wallet_rounded, size: 48, color: Colors.blue),
+              child: const Icon(
+                Icons.wallet_rounded,
+                size: 48,
+                color: Colors.blue,
+              ),
             ),
             const SizedBox(height: 20),
             const Text(
               'Your Wallet is Empty',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Create your first visiting card to start networking seamlessly with NFC and QR.',
+              'Create your first visiting card, then share or scan a contact QR.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.7)),
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.white.withValues(alpha: 0.7),
+              ),
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
@@ -332,8 +417,13 @@ class _WalletCardStackState extends State<WalletCardStack> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 14,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
               ),
             ),
           ],

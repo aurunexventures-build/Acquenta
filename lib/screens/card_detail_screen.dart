@@ -1,5 +1,5 @@
+import '../theme/metcue_theme.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -28,6 +28,19 @@ class CardDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cardsProvider = Provider.of<CardsProvider>(context);
+    if (cardsProvider.isCardLocked(cardId)) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Card locked')),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'Free accounts can use up to five cards. Remove a card to unlock this one.',
+            ),
+          ),
+        ),
+      );
+    }
     final card = cardsProvider.cards.firstWhere(
       (c) => c.id == cardId,
       orElse: () => cardsProvider.cards.isNotEmpty
@@ -48,6 +61,15 @@ class CardDetailScreen extends StatelessWidget {
         title: Text(card.title.isNotEmpty ? card.title : 'Visiting Card'),
         actions: [
           IconButton(
+            tooltip: card.isDefault ? 'Primary card' : 'Make primary card',
+            icon: Icon(
+              card.isDefault ? Icons.star_rounded : Icons.star_outline_rounded,
+            ),
+            onPressed: card.isDefault
+                ? null
+                : () => cardsProvider.setDefaultCard(card.id),
+          ),
+          IconButton(
             icon: const Icon(Icons.edit_outlined),
             tooltip: 'Edit Card',
             onPressed: () {
@@ -61,7 +83,7 @@ class CardDetailScreen extends StatelessWidget {
           ),
           IconButton(
             icon: const Icon(Icons.qr_code_2_rounded),
-            tooltip: 'Share QR',
+            tooltip: 'Send card',
             onPressed: () {
               showDialog(
                 context: context,
@@ -83,15 +105,24 @@ class CardDetailScreen extends StatelessWidget {
             if (cardsProvider.activeEventMode != null) ...[
               Container(
                 margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
-                  color: Colors.amber.withValues(alpha: 0.12),
+                  color: MetCueTheme.purple.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
+                  border: Border.all(
+                    color: MetCueTheme.purple.withValues(alpha: 0.4),
+                  ),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.location_on_rounded, color: Colors.amber, size: 20),
+                    const Icon(
+                      Icons.location_on_rounded,
+                      color: MetCueTheme.purple,
+                      size: 20,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
@@ -99,7 +130,10 @@ class CardDetailScreen extends StatelessWidget {
                         children: [
                           const Text(
                             'Active Event Mode On',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
                           ),
                           Text(
                             'Sharing will stamp: "${cardsProvider.activeEventMode!.eventName}"',
@@ -138,10 +172,15 @@ class CardDetailScreen extends StatelessWidget {
                       backgroundColor: accentColor,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
                     icon: const Icon(Icons.qr_code_rounded, size: 20),
-                    label: const Text('Show QR Code', style: TextStyle(fontWeight: FontWeight.bold)),
+                    label: const Text(
+                      'Send card',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                     onPressed: () {
                       showDialog(
                         context: context,
@@ -158,21 +197,40 @@ class CardDetailScreen extends StatelessWidget {
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
                     icon: const Icon(Icons.contact_page_outlined, size: 20),
-                    label: const Text('Export vCard', style: TextStyle(fontWeight: FontWeight.bold)),
-                    onPressed: () {
-                      final vcard = VCardService.generateVCard(
-                        card: card,
-                        eventContext: cardsProvider.activeEventMode,
-                      );
-                      Clipboard.setData(ClipboardData(text: vcard));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('vCard with full event context copied! Can be pasted into contacts or sent.'),
-                        ),
-                      );
+                    label: const Text(
+                      'Save contact',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    onPressed: () async {
+                      final box = context.findRenderObject() as RenderBox?;
+                      try {
+                        await VCardService.exportContact(
+                          vcard: VCardService.generateVCard(
+                            card: card,
+                            eventContext: cardsProvider.activeEventMode,
+                          ),
+                          name: card.fullName,
+                          sharePositionOrigin: box == null
+                              ? null
+                              : box.localToGlobal(Offset.zero) & box.size,
+                        );
+                      } catch (_) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Could not open contacts. Please try again.',
+                              ),
+                              duration: Duration(seconds: 3),
+                            ),
+                          );
+                        }
+                      }
                     },
                   ),
                 ),
@@ -183,13 +241,20 @@ class CardDetailScreen extends StatelessWidget {
 
             // Contact Direct Actions
             Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Direct Actions', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                    Text(
+                      'Direct Actions',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     if (card.phone.isNotEmpty)
                       ListTile(
@@ -205,11 +270,16 @@ class CardDetailScreen extends StatelessWidget {
                           children: [
                             IconButton(
                               icon: const Icon(Icons.call, color: Colors.green),
-                              onPressed: () => launchUrl(Uri.parse('tel:${card.phone}')),
+                              onPressed: () =>
+                                  launchUrl(Uri.parse('tel:${card.phone}')),
                             ),
                             IconButton(
-                              icon: const Icon(Icons.sms, color: Colors.blue),
-                              onPressed: () => launchUrl(Uri.parse('sms:${card.phone}')),
+                              icon: const Icon(
+                                Icons.sms,
+                                color: MetCueTheme.purple,
+                              ),
+                              onPressed: () =>
+                                  launchUrl(Uri.parse('sms:${card.phone}')),
                             ),
                           ],
                         ),
@@ -224,8 +294,12 @@ class CardDetailScreen extends StatelessWidget {
                         title: const Text('Send Email'),
                         subtitle: Text(card.email),
                         trailing: IconButton(
-                          icon: const Icon(Icons.send_rounded, color: Colors.blue),
-                          onPressed: () => launchUrl(Uri.parse('mailto:${card.email}')),
+                          icon: const Icon(
+                            Icons.send_rounded,
+                            color: MetCueTheme.purple,
+                          ),
+                          onPressed: () =>
+                              launchUrl(Uri.parse('mailto:${card.email}')),
                         ),
                       ),
                   ],

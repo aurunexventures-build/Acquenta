@@ -1,0 +1,13 @@
+{
+  "name": "acquenta-admin",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "../backend/node_modules/.bin/tsc --noEmit",
+    "deploy": "../backend/node_modules/.bin/wrangler deploy",
+    "test": "node test/run.mjs"
+  },
+  "dependencies": {
+    "jose": "^5.9.6"
+  }
+}
