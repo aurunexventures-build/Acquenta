@@ -33,6 +33,7 @@ class FollowUpCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(connection.fullName),
+                const SizedBox(height: 16),
                 TextFormField(
                   initialValue: note,
                   onChanged: (value) => note = value,
@@ -72,7 +73,8 @@ class FollowUpCard extends StatelessWidget {
                   },
                 ),
                 const Text(
-                  'Shown in Acquenta. Export to your calendar for an alert outside the app.',
+                  'For alerts outside Acquenta, export to your calendar.',
+                  style: TextStyle(fontSize: 12),
                 ),
                 if (!due.isAfter(DateTime.now()))
                   const Text('Choose a future date and time.'),
@@ -146,68 +148,151 @@ class FollowUpCard extends StatelessWidget {
     final provider = context.read<ConnectionsProvider>();
     final due = connection.followUpAt?.toLocal();
     final active = due != null && !connection.followUpCompleted;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Follow-up', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            Text(
-              due == null
-                  ? 'Keep the conversation going.'
-                  : '${connection.followUpCompleted
-                        ? 'Completed'
-                        : due.isBefore(DateTime.now())
-                        ? 'Overdue'
-                        : 'Scheduled'} · ${DateFormat('d MMM y, HH:mm').format(due)}',
-            ),
-            if (connection.followUpNote.isNotEmpty)
-              Text(connection.followUpNote),
-            Wrap(
-              spacing: 8,
-              children: [
-                TextButton.icon(
-                  onPressed: () => _edit(context),
-                  icon: const Icon(Icons.edit_calendar_outlined),
-                  label: Text(due == null ? 'Set reminder' : 'Reschedule'),
+    final theme = Theme.of(context);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: theme.dividerColor.withValues(alpha: .45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: .08),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                if (due != null && connection.followUpCompleted)
-                  TextButton(
-                    onPressed: () => provider.reopenFollowUp(connection.id),
-                    child: const Text('Reopen'),
-                  ),
-                if (active) ...[
-                  TextButton(
-                    onPressed: () => provider.completeFollowUp(connection.id),
-                    child: const Text('Complete'),
-                  ),
-                  TextButton(
-                    onPressed: () async {
-                      final now = DateTime.now();
-                      await provider.setFollowUp(
-                        connection.id,
-                        DateTime(now.year, now.month, now.day + 1, 9),
-                        connection.followUpNote,
-                      );
-                    },
-                    child: const Text('Snooze to tomorrow'),
-                  ),
-                  TextButton(
-                    onPressed: () => _calendar(context),
-                    child: const Text('Export to calendar'),
-                  ),
-                ],
-                if (due != null)
-                  TextButton(
-                    onPressed: () => provider.removeFollowUp(connection.id),
-                    child: const Text('Remove'),
-                  ),
-              ],
+                child: Icon(
+                  Icons.event_outlined,
+                  color: theme.colorScheme.primary,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Follow-up',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      due == null
+                          ? 'Choose when to reconnect'
+                          : DateFormat('d MMM y · HH:mm').format(due),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    if (due != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          connection.followUpCompleted
+                              ? 'Completed'
+                              : due.isBefore(DateTime.now())
+                              ? 'Overdue'
+                              : 'Scheduled',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (due != null)
+                PopupMenuButton<String>(
+                  tooltip: 'Follow-up options',
+                  onSelected: (value) async {
+                    switch (value) {
+                      case 'edit':
+                        await _edit(context);
+                        break;
+                      case 'tomorrow':
+                        final now = DateTime.now();
+                        await provider.setFollowUp(
+                          connection.id,
+                          DateTime(now.year, now.month, now.day + 1, 9),
+                          connection.followUpNote,
+                        );
+                        break;
+                      case 'calendar':
+                        await _calendar(context);
+                        break;
+                      case 'remove':
+                        await provider.removeFollowUp(connection.id);
+                        break;
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                      value: 'edit',
+                      child: Text('Reschedule'),
+                    ),
+                    if (active)
+                      const PopupMenuItem(
+                        value: 'tomorrow',
+                        child: Text('Tomorrow at 9 AM'),
+                      ),
+                    if (active)
+                      const PopupMenuItem(
+                        value: 'calendar',
+                        child: Text('Export to calendar'),
+                      ),
+                    const PopupMenuItem(
+                      value: 'remove',
+                      child: Text('Remove reminder'),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+          if (connection.followUpNote.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Text(
+                connection.followUpNote,
+                style: theme.textTheme.bodyMedium,
+              ),
             ),
-          ],
-        ),
+          const SizedBox(height: 14),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(46),
+            ),
+            onPressed: due == null
+                ? () => _edit(context)
+                : connection.followUpCompleted
+                ? () => provider.reopenFollowUp(connection.id)
+                : () => provider.completeFollowUp(connection.id),
+            icon: Icon(
+              due == null
+                  ? Icons.add
+                  : connection.followUpCompleted
+                  ? Icons.refresh
+                  : Icons.check,
+              size: 18,
+            ),
+            label: Text(
+              due == null
+                  ? 'Set reminder'
+                  : connection.followUpCompleted
+                  ? 'Reopen'
+                  : 'Complete',
+            ),
+          ),
+        ],
       ),
     );
   }

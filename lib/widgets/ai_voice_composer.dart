@@ -87,18 +87,19 @@ class _AiVoiceComposerState extends State<AiVoiceComposer> {
                       readOnly: _busy,
                       onChanged: (_) => setState(() {}),
                       scrollPadding: const EdgeInsets.only(top: 32, bottom: 96),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         hintText: 'Speak or type your draft…',
-                        border: OutlineInputBorder(),
+                        border: const OutlineInputBorder(),
+                        suffixIcon: VoiceMagicBar(
+                          controller: _text,
+                          onMagic: _organise,
+                          busy: _busy,
+                          merged: true,
+                          compact: true,
+                          autoStart: true,
+                          onChanged: (_) => setState(() => _reviewed = false),
+                        ),
                       ),
-                    ),
-                    VoiceMagicBar(
-                      controller: _text,
-                      onMagic: _organise,
-                      busy: _busy,
-                      merged: true,
-                      autoStart: true,
-                      onChanged: (_) => setState(() => _reviewed = false),
                     ),
                     TextButton(
                       onPressed: _busy ? null : _organise,

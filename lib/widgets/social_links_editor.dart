@@ -88,9 +88,7 @@ class _SocialLinksEditorState extends State<SocialLinksEditor> {
     children: [
       const Text('Social profiles & websites'),
       const SizedBox(height: 6),
-      const Text(
-        'Enter a username for social profiles. We build the link. Websites can use a full address.',
-      ),
+      const Text('Add a username or website.'),
       for (final d in widget.drafts)
         Padding(
           key: ValueKey(d.id),
@@ -128,7 +126,7 @@ class _SocialLinksEditorState extends State<SocialLinksEditor> {
                         ? 'Phone number with country code'
                         : 'https://yourwebsite.com',
                     helperText: d.type.usesUsername
-                        ? 'Username only · a full profile link also works'
+                        ? 'Username or profile link'
                         : null,
                     helperMaxLines: 2,
                     border: const OutlineInputBorder(),

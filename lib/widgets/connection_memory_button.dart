@@ -34,6 +34,7 @@ class ConnectionMemoryButton extends StatelessWidget {
       onPressed: () => showDialog(
         context: context,
         builder: (_) => VoiceCaptureDialog(
+          guided: true,
           connection: connection,
           onCaptured: (updated) => context
               .read<ConnectionsProvider>()

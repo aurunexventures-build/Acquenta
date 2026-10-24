@@ -1,6 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:speech_to_text/speech_to_text.dart';
+import 'package:provider/provider.dart';
+import '../services/auth_service.dart';
+import '../services/sync_service.dart';
+import '../services/cloud_card_conversation_voice.dart';
+import '../services/conversation_screen_awake.dart';
+import 'conversation_listening_indicator.dart';
 import 'recall_wireframe.dart';
 import 'ai_microphone_icon.dart';
 
@@ -13,6 +18,7 @@ class VoiceMagicBar extends StatefulWidget {
   final String magicLabel;
   final bool compact;
   final bool merged, autoStart;
+  final bool autoOrganise;
   final Widget? trailing;
   const VoiceMagicBar({
     super.key,
@@ -24,6 +30,7 @@ class VoiceMagicBar extends StatefulWidget {
     this.compact = false,
     this.merged = false,
     this.autoStart = false,
+    this.autoOrganise = true,
     this.trailing,
   });
   @override
@@ -48,89 +55,103 @@ class _VoiceMagicBarState extends State<VoiceMagicBar>
     if (mounted) setState(() {});
   }
 
-  final _speech = SpeechToText();
+  CloudCardConversationVoice? _voice;
+  SyncService? _service;
+  String? _voiceUid;
+  final _awake = ConversationScreenAwake();
   bool _listening = false;
-  String _prefix = '', _status = '';
+  String _status = '';
   Timer? _finishTimer;
   int _generation = 0;
-  void _finish() {
-    if (!mounted || !_listening) return;
-    setState(() => _listening = false);
-    final generation = _generation;
-    _finishTimer?.cancel();
-    _finishTimer = Timer(const Duration(milliseconds: 500), () async {
-      if (mounted &&
-          generation == _generation &&
-          !widget.busy &&
-          widget.controller.text.trim().isNotEmpty) {
-        await widget.onMagic();
-      }
-    });
+
+  void _cancel() {
+    _generation++;
+    _awake.close();
+    unawaited(_voice?.stop());
+    if (mounted) setState(() => _listening = false);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if ([
+      AppLifecycleState.paused,
+      AppLifecycleState.hidden,
+      AppLifecycleState.detached,
+    ].contains(state)) {
+      _cancel();
+    }
   }
 
   Future<void> _toggle() async {
     if (_listening) {
-      await _speech.stop();
-      _finish();
+      await _voice?.finishListening();
       return;
     }
-    _finishTimer?.cancel();
-    _generation++;
+    final auth = context.read<AuthService?>();
+    if (auth == null || !auth.isAuthenticated) {
+      setState(() => _status = 'Sign in to use AI voice, or type instead.');
+      return;
+    }
+    final uid = auth.currentUser?.uid;
+    final generation = ++_generation;
+    final before = widget.controller.text;
+    bool valid() =>
+        mounted && generation == _generation && auth.currentUser?.uid == uid;
     try {
-      final ready = await _speech.initialize(
-        onStatus: (status) {
-          if (status == 'done' || status == 'notListening') _finish();
-        },
-        onError: (_) {
-          _generation++;
-          _finishTimer?.cancel();
-          if (mounted) {
-            setState(() {
-              _listening = false;
-              _status = 'Voice unavailable. You can type instead.';
-            });
-          }
+      _service ??= SyncService();
+      if (_voiceUid != uid) {
+        await _voice?.dispose();
+        _voice = null;
+        _voiceUid = uid;
+      }
+      _voice ??= CloudCardConversationVoice(
+        request: (path, body) {
+          if (auth.currentUser?.uid != uid) throw StateError('Account changed');
+          return _service!.request(path, body, auth);
         },
       );
-      if (!mounted) return;
-      if (!ready) {
-        setState(
-          () =>
-              _status = 'Allow microphone and speech access, or type instead.',
-        );
-        return;
+      if (!await _voice!.initialize()) {
+        throw StateError('Microphone unavailable');
       }
-      _prefix = widget.controller.text.trim();
+      if (!valid()) return;
+      _awake.open();
       setState(() {
         _listening = true;
         _status = '';
       });
-      await _speech.listen(
-        onResult: (result) {
-          if (!mounted) return;
-          final text = [
-            if (_prefix.isNotEmpty) _prefix,
-            result.recognizedWords,
+      await _voice!.listen(
+        onResult: (text, finalResult) async {
+          if (!finalResult || !valid()) return;
+          _awake.close();
+          setState(() => _listening = false);
+          // A delayed recording must never replace something typed in the meantime.
+          if (widget.controller.text != before || text.trim().isEmpty) return;
+          final result = [
+            if (before.trim().isNotEmpty) before.trim(),
+            text.trim(),
           ].join(' ');
           widget.controller.value = TextEditingValue(
-            text: text,
-            selection: TextSelection.collapsed(offset: text.length),
+            text: result,
+            selection: TextSelection.collapsed(offset: result.length),
           );
-          widget.onChanged?.call(text);
+          widget.onChanged?.call(result);
+          if (valid() && !widget.busy && widget.autoOrganise) {
+            await widget.onMagic();
+          }
         },
-        listenOptions: SpeechListenOptions(
-          listenMode: ListenMode.dictation,
-          pauseFor: const Duration(seconds: 5),
-        ),
+        onDone: () {},
+        onError: (_) {
+          if (!valid()) return;
+          _cancel();
+          setState(
+            () => _status = 'Could not transcribe. Retry or type instead.',
+          );
+        },
       );
     } catch (_) {
-      _generation++;
-      if (mounted) {
-        setState(() {
-          _listening = false;
-          _status = 'Voice unavailable. You can type instead.';
-        });
-      }
+      if (!valid()) return;
+      _cancel();
+      setState(() => _status = 'Voice unavailable. Retry or type instead.');
     }
   }
 
@@ -139,7 +160,9 @@ class _VoiceMagicBarState extends State<VoiceMagicBar>
     WidgetsBinding.instance.removeObserver(this);
     _generation++;
     _finishTimer?.cancel();
-    if (_listening && _speech.isAvailable) unawaited(_speech.cancel());
+    _awake.close();
+    _voice?.dispose();
+    _service?.close();
     super.dispose();
   }
 
@@ -200,6 +223,8 @@ class _VoiceMagicBarState extends State<VoiceMagicBar>
               Expanded(child: widget.trailing!),
             ],
           ),
+          if (_voice != null && _listening)
+            ConversationListeningIndicator(source: _voice!),
           if (_status.isNotEmpty)
             Text(
               _status,
@@ -220,19 +245,34 @@ class _VoiceMagicBarState extends State<VoiceMagicBar>
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             if (widget.merged) ...[
-              FilledButton.icon(
-                onPressed: widget.busy ? null : _toggle,
-                icon: _listening
-                    ? const Icon(Icons.stop_circle_outlined)
-                    : const AiMicrophoneIcon(),
-                label: Text(
-                  widget.busy
-                      ? 'Organising…'
+              if (compact)
+                IconButton(
+                  tooltip: _listening ? 'Done speaking' : 'Speak with AI',
+                  onPressed: widget.busy ? null : _toggle,
+                  icon: widget.busy
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
                       : _listening
-                      ? 'Done speaking'
-                      : 'Speak with AI',
+                      ? const Icon(Icons.stop_circle_outlined)
+                      : const AiMicrophoneIcon(),
+                )
+              else
+                FilledButton.icon(
+                  onPressed: widget.busy ? null : _toggle,
+                  icon: _listening
+                      ? const Icon(Icons.stop_circle_outlined)
+                      : const AiMicrophoneIcon(),
+                  label: Text(
+                    widget.busy
+                        ? 'Organising…'
+                        : _listening
+                        ? 'Done speaking'
+                        : 'Speak with AI',
+                  ),
                 ),
-              ),
             ] else if (compact) ...[
               IconButton(
                 tooltip: _listening ? 'Done speaking' : 'Speak',
@@ -276,6 +316,8 @@ class _VoiceMagicBarState extends State<VoiceMagicBar>
             ],
           ],
         ),
+        if (_voice != null && _listening)
+          ConversationListeningIndicator(source: _voice!),
         if (_listening && !compact)
           const Text('Listening… AI will organise your words when you finish.'),
         if (_status.isNotEmpty)

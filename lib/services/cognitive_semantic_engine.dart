@@ -38,6 +38,72 @@ class SemanticMatchExplanation {
 class CognitiveSemanticEngine {
   /// Curated cognitive ontology domains modeling software, design, and human collaboration
   static final List<CognitiveDomain> _domains = [
+    const CognitiveDomain(
+      id: 'technical_people',
+      name: 'Technical professionals',
+      queryTriggers: {
+        'techie',
+        'techies',
+        'technologist',
+        'technical person',
+        'it professional',
+      },
+      associatedSkills: {
+        'android',
+        'flutter',
+        'kotlin',
+        'react',
+        'python',
+        'javascript',
+        'devops',
+        'cloud',
+        'cybersecurity',
+        'ai',
+        'machine learning',
+      },
+      associatedRoles: {
+        'developer',
+        'software engineer',
+        'programmer',
+        'it architect',
+        'it specialist',
+        'technical lead',
+        'sysadmin',
+        'ai researcher',
+      },
+      explanationTemplate:
+          'Their saved role or skills relate to technical work.',
+    ),
+    const CognitiveDomain(
+      id: 'software_engineering',
+      name: 'Software engineering',
+      queryTriggers: {
+        'software engineer',
+        'software developer',
+        'programmer',
+        'coder',
+        'coding',
+      },
+      associatedSkills: {
+        'android',
+        'flutter',
+        'kotlin',
+        'swift',
+        'react',
+        'dart',
+        'javascript',
+        'python',
+        'software development',
+      },
+      associatedRoles: {
+        'developer',
+        'software engineer',
+        'programmer',
+        'software architect',
+      },
+      explanationTemplate:
+          'Their saved development skills relate to software engineering.',
+    ),
     // 1. Mobile Application Ecosystem
     const CognitiveDomain(
       id: 'mobile_app',

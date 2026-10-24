@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../services/text_safety.dart';
 import 'package:flutter/material.dart';
 import '../models/account_profile.dart';
 import '../services/auth_service.dart';
@@ -9,6 +10,7 @@ class AccountProfileProvider extends ChangeNotifier {
   final StorageService storage;
   final SyncService _service;
   AccountProfile? _profile;
+  Future<void> Function(AccountProfile)? onValidateText;
   AuthService? _auth;
   bool _syncing = false, _again = false, _disposed = false;
   String? status;
@@ -33,7 +35,10 @@ class AccountProfileProvider extends ChangeNotifier {
 
   Future<void> save(AccountProfile value) async {
     value.validate();
+    TextSafety.validateFields(value.toJson());
     final scope = storage.scope;
+    await onValidateText?.call(value);
+    if (scope != storage.scope) throw StateError('Account changed.');
     final updated = AccountProfile.fromJson({
       ...value.toJson(),
       'updatedAt': storage

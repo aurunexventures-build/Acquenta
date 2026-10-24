@@ -1,5 +1,7 @@
+import 'aai_test_helpers.dart';
 import 'package:contact_card_builder/screens/connection_detail_screen.dart';
 import 'dart:io';
+import 'dart:convert';
 import 'package:contact_card_builder/screens/account_profile_screen.dart';
 import 'package:contact_card_builder/providers/account_profile_provider.dart';
 import 'package:contact_card_builder/models/account_profile.dart';
@@ -62,6 +64,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     final boundary = GlobalKey();
+    final conversationVoice = FakeCardVoice();
     Future<void> capture(String name, Widget screen) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -78,7 +81,48 @@ void main() {
           ),
         ),
       );
+      if (name == 'card-setup') {
+        await tester.runAsync(
+          () => precacheImage(
+            const AssetImage('assets/branding/acquenta-icon-v3.png'),
+            boundary.currentContext!,
+          ),
+        );
+        for (var frame = 0; frame < 24; frame++) {
+          await tester.pump(const Duration(milliseconds: 200));
+          await tester.runAsync(() async {
+            final image =
+                await (boundary.currentContext!.findRenderObject()
+                        as RenderRepaintBoundary)
+                    .toImage(pixelRatio: 1);
+            final bytes = await image.toByteData(
+              format: ui.ImageByteFormat.png,
+            );
+            final file = File(
+              'build/ui-review/card-motion/frame-${frame.toString().padLeft(2, '0')}.png',
+            );
+            await file.parent.create(recursive: true);
+            await file.writeAsBytes(bytes!.buffer.asUint8List());
+            image.dispose();
+          });
+        }
+      }
       await tester.pumpAndSettle();
+      if (name == 'people-voice-stack') {
+        await tester.tap(find.text('Connections').last);
+        await tester.pumpAndSettle();
+      }
+      if (name == 'speak-profile') {
+        for (final answer in [
+          'Call it Creative card. Show it as Sam Patel, an IT architect. I help teams connect their systems for work.',
+          'My skills are enterprise architecture and system integration.',
+          'Engineering teams planning their next project.',
+        ]) {
+          conversationVoice.reply(answer);
+          await tester.pump(const Duration(milliseconds: 6500));
+          await tester.pumpAndSettle();
+        }
+      }
       expect(tester.takeException(), isNull);
       await tester.runAsync(() async {
         final image =
@@ -185,13 +229,58 @@ void main() {
       OnboardingCardBuilderScreen(storageService: storage),
     );
     await capture(
+      'profile-name-confirmation',
+      Scaffold(
+        body: ProfileQuestionnaire(
+          voice: FakeCardVoice(),
+          understandReplies: true,
+          profileName: 'Sam Patel',
+          generate: (_) async => {},
+        ),
+      ),
+    );
+    await capture(
       'speak-profile',
       Scaffold(
         body: ProfileQuestionnaire(
-          generate: (_) async => {
-            'role': 'Creator',
-            'pitch': 'I create Android apps.',
-            'skills': ['Android'],
+          voice: conversationVoice,
+          understandReplies: true,
+          generate: (input) async {
+            final count = (jsonDecode(input['conversation']!) as List).length;
+            return {
+              'answers': [
+                'Creative card',
+                'Professional networking',
+                'Sam Patel',
+                'IT Architect',
+                'I help teams connect their enterprise systems.',
+                count > 1
+                    ? 'Enterprise architecture, system integration'
+                    : null,
+                count > 2 ? 'Engineering teams' : null,
+              ],
+              'next': count == 1
+                  ? 5
+                  : count == 2
+                  ? 6
+                  : -1,
+              'question': count == 1
+                  ? 'Which skills should your card highlight?'
+                  : 'Who would you like to connect with?',
+              'card': count > 2
+                  ? {
+                      'cardName': 'Creative card',
+                      'fullName': 'Sam Patel',
+                      'role': 'IT Architect',
+                      'pitch': 'I help teams connect their enterprise systems.',
+                      'skills': [
+                        'Enterprise architecture',
+                        'System integration',
+                      ],
+                      'category': 'professional',
+                    }
+                  : null,
+            };
           },
         ),
       ),
@@ -204,6 +293,33 @@ void main() {
         fullName: 'Sam',
         role: 'App developer',
         headline: 'I create Android applications.',
+        links: const [
+          CardLink(
+            id: 'linkedin',
+            title: 'LinkedIn',
+            type: LinkType.linkedin,
+            url: 'https://www.linkedin.com/in/sam-patel',
+          ),
+          CardLink(
+            id: 'instagram',
+            title: 'Instagram',
+            type: LinkType.instagram,
+            url: 'https://www.instagram.com/sam',
+          ),
+          CardLink(id: 'website', title: 'Website', url: 'https://example.com'),
+          CardLink(
+            id: 'youtube',
+            title: 'YouTube',
+            type: LinkType.youtube,
+            url: 'https://www.youtube.com/@sam',
+          ),
+          CardLink(
+            id: 'github',
+            title: 'GitHub',
+            type: LinkType.github,
+            url: 'https://github.com/sam',
+          ),
+        ],
         createdAt: DateTime(2026),
         updatedAt: DateTime(2026),
       ),
@@ -252,8 +368,35 @@ void main() {
     await cards.addCard(
       sample.copyWith(id: 'project', title: 'Project', isDefault: false),
     );
+    await cards.addCard(
+      sample.copyWith(
+        id: 'event-card',
+        themeColorHex: '#0D9488',
+        fullName: 'Sam · Events',
+        isDefault: false,
+      ),
+    );
+    await cards.addCard(
+      sample.copyWith(
+        id: 'project-card',
+        themeColorHex: '#7C3AED',
+        fullName: 'Sam · Projects',
+        isDefault: false,
+      ),
+    );
     await capture(
       'home-no-gap',
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: cards),
+          ChangeNotifierProvider.value(value: people),
+          ChangeNotifierProvider(create: (_) => AuthService()),
+        ],
+        child: const HomeScreen(),
+      ),
+    );
+    await capture(
+      'people-voice-stack',
       MultiProvider(
         providers: [
           ChangeNotifierProvider.value(value: cards),

@@ -7,7 +7,10 @@ const metCueWebOptions = FirebaseOptions(
   appId: '1:1084823977938:web:51c6a4a15a82b9c508120b',
   messagingSenderId: '1084823977938',
   projectId: 'metcue09',
-  authDomain: 'metcue09.firebaseapp.com',
+  authDomain: String.fromEnvironment(
+    'ACQUENTA_AUTH_DOMAIN',
+    defaultValue: 'metcue09.firebaseapp.com',
+  ),
   storageBucket: 'metcue09.firebasestorage.app',
 );
 

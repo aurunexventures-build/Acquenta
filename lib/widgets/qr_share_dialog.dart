@@ -12,6 +12,8 @@ import '../services/sync_service.dart';
 import '../services/vcard_service.dart';
 import '../services/offline_card_share.dart';
 import '../services/nfc_share_service.dart';
+import '../services/nearby_card_service.dart';
+import '../screens/nearby_exchange_screen.dart';
 
 class QrShareDialog extends StatefulWidget {
   final ContactCard card;
@@ -188,6 +190,30 @@ class _QrShareDialogState extends State<QrShareDialog>
                 widget.card.fullName,
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: NearbyCardService.supported
+                    ? () async {
+                        await _stopNfc();
+                        if (!context.mounted) return;
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                NearbyExchangeScreen(card: widget.card),
+                          ),
+                        );
+                      }
+                    : null,
+                icon: const Icon(Icons.near_me_outlined),
+                label: const Text('Send nearby · iPhone'),
+              ),
+              if (!NearbyCardService.supported)
+                const Text(
+                  'Nearby exchange works in the iPhone app. This QR works offline here.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11),
+                ),
               const SizedBox(height: 16),
               if (fits)
                 Center(

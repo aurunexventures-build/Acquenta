@@ -1,4 +1,6 @@
 import 'dart:async';
+import '../services/nearby_card_service.dart';
+import 'nearby_exchange_screen.dart';
 import '../services/nfc_share_service.dart';
 import 'contact_import_screen.dart';
 import 'duplicate_contacts_screen.dart';
@@ -79,7 +81,7 @@ class _ReceiveCardScreenState extends State<ReceiveCardScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _scanning = _cameraSupported;
+    _scanning = false;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted || !_scanning) return;
       unawaited(_listenNfc());
@@ -93,6 +95,45 @@ class _ReceiveCardScreenState extends State<ReceiveCardScreen>
         }
       }
     });
+  }
+
+  Future<void> _scanQr() async {
+    if (!_cameraSupported) return;
+    setState(() {
+      _scanning = true;
+      _error = '';
+    });
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted ||
+        !_scanning ||
+        !(ModalRoute.of(context)?.isCurrent ?? false)) {
+      return;
+    }
+    try {
+      await _camera.start();
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _error =
+              'Allow camera access, or paste a card from More options.',
+        );
+      }
+    }
+  }
+
+  Future<void> _nearby() async {
+    if (_scanning) {
+      try {
+        await _camera.stop();
+      } catch (_) {}
+    }
+    await _nfc.stopReceiving();
+    if (!mounted) return;
+    setState(() => _scanning = false);
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const NearbyExchangeScreen()),
+    );
   }
 
   String _error = '';
@@ -166,6 +207,7 @@ class _ReceiveCardScreenState extends State<ReceiveCardScreen>
         await showDialog(
           context: context,
           builder: (_) => VoiceCaptureDialog(
+            guided: true,
             connection: existing ?? preview,
             onCaptured: provider.updateConnection,
           ),
@@ -200,7 +242,7 @@ class _ReceiveCardScreenState extends State<ReceiveCardScreen>
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: const Text('Scan a QR card'),
+      title: const Text('Receive a card'),
       actions: [
         PopupMenuButton<String>(
           tooltip: 'More options',
@@ -273,7 +315,46 @@ class _ReceiveCardScreenState extends State<ReceiveCardScreen>
     body: ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        const Text('Point your camera at their QR code.'),
+        if (_preview == null) ...[
+          const Text('Choose how to receive. No internet needed.'),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.icon(
+                onPressed: _cameraSupported ? _scanQr : null,
+                icon: const Icon(Icons.qr_code_scanner),
+                label: const Text('Scan QR'),
+              ),
+              OutlinedButton.icon(
+                onPressed: NearbyCardService.supported ? _nearby : null,
+                icon: const Icon(Icons.near_me_outlined),
+                label: const Text('Nearby · iPhone'),
+              ),
+              if (NfcShareService.supportedPlatform)
+                OutlinedButton.icon(
+                  onPressed: () {
+                    setState(
+                      () => _error =
+                          'Open Send by NFC on the other Android phone and hold the phones back to back.',
+                    );
+                    _listenNfc();
+                  },
+                  icon: const Icon(Icons.nfc),
+                  label: const Text('Receive by NFC'),
+                ),
+            ],
+          ),
+          if (!NearbyCardService.supported)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text(
+                'Nearby exchange is available in the iPhone app. QR works across phones.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+        ],
         const SizedBox(height: 16),
         if (_preview == null) ...[
           if (_scanning)

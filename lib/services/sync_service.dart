@@ -29,8 +29,7 @@ class SyncResult {
 }
 
 class SyncService {
-  static const nativeApiUrl =
-      'https://acquenta.aurunex.com';
+  static const nativeApiUrl = 'https://acquenta.aurunex.com';
   static final baseUrl = resolveApiBase(
     isWeb: kIsWeb,
     pageUri: Uri.base,
@@ -90,7 +89,9 @@ class SyncService {
     final userId = auth.currentUser?.uid;
     final token = await auth.getIdToken();
     if (token == null || userId != auth.currentUser?.uid) {
-      throw Exception('Sign in using Cloud Sync to use AI and online sharing.');
+      throw Exception(
+        'Sign in to Acquenta on this device to use AI and online sharing.',
+      );
     }
     final request = http.Request(method, Uri.parse('$baseUrl$path'))
       ..headers.addAll({

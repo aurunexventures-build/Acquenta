@@ -1,3 +1,9 @@
+import '../widgets/card_finish_picker.dart';
+import '../widgets/card_colour_picker.dart';
+import 'package:flutter/foundation.dart';
+import '../services/cloud_card_conversation_voice.dart';
+import '../widgets/delete_card_dialog.dart';
+import '../widgets/card_purpose_row.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
@@ -7,6 +13,7 @@ import '../providers/cards_provider.dart';
 import '../widgets/skills_tags_editor.dart';
 import '../widgets/social_links_editor.dart';
 import '../widgets/card_text_field.dart';
+import '../widgets/aai_card_button.dart';
 import '../services/auth_service.dart';
 import '../services/sync_service.dart';
 import 'profile_questionnaire.dart';
@@ -27,7 +34,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
   final _fields = <String, TextEditingController>{};
 
   String _avatarUrl = '';
-  late String _title;
+  String _cardFinish = 'contour';
   late CardCategory _category;
   late String _fullName;
   late String _headline;
@@ -59,7 +66,6 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
     final card = widget.initialCard;
     if (card != null) {
       _avatarUrl = card.avatarUrl;
-      _title = card.title;
       _category = card.category;
       _fullName = card.fullName;
       _headline = card.headline;
@@ -70,11 +76,11 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
       _location = card.location;
       _bio = card.bio;
       _themeColorHex = card.themeColorHex;
+      _cardFinish = card.cardFinish;
       _isDefault = card.isDefault;
       _techStack = List.from(card.techStack);
       _links = List.from(card.links);
     } else {
-      _title = 'Professional';
       _category = CardCategory.professional;
       _fullName = '';
       _headline = '';
@@ -84,7 +90,8 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
       _phone = '';
       _location = '';
       _bio = '';
-      _themeColorHex = '#2563EB';
+      _themeColorHex =
+          context.read<CardsProvider?>()?.suggestedCardColour ?? '#2563EB';
       _isDefault = false;
       _techStack = [];
       _links = [];
@@ -117,7 +124,6 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
       return;
     }
     _links = SocialLinkDraft.validLinks(_socials);
-    _title = _controller('title', _title).text.trim();
     _fullName = _controller('name', _fullName).text.trim();
     _role = _controller('role', _role).text.trim();
     _headline = _controller('pitch', _headline).text.trim();
@@ -126,11 +132,19 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
     _phone = _controller('phone', _phone).text.trim();
     _location = _controller('location', _location).text.trim();
     _bio = _controller('bio', _bio).text.trim();
-    if ([_title, _fullName, _role, _headline].any((v) => v.isEmpty)) {
+    if (_headline.characters.length > ContactCard.pitchLimit) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Keep the one-line pitch within 120 characters.'),
+        ),
+      );
+      return;
+    }
+    if ([_fullName, _role, _headline].any((v) => v.isEmpty)) {
       _formKey.currentState!.validate();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Add a card name, your name, role and one-line pitch.'),
+          content: Text('Add your name, role and one-line pitch.'),
         ),
       );
       return;
@@ -145,7 +159,6 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
     try {
       if (widget.initialCard != null) {
         final updated = widget.initialCard!.copyWith(
-          title: _title,
           avatarUrl: _avatarUrl,
           category: _category,
           fullName: _fullName,
@@ -157,6 +170,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
           location: _location,
           bio: _bio,
           themeColorHex: _themeColorHex,
+          cardFinish: _cardFinish,
           isDefault: _isDefault,
           techStack: _techStack,
           links: _links,
@@ -166,7 +180,6 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
       } else {
         final newCard = ContactCard(
           id: const Uuid().v4(),
-          title: _title,
           avatarUrl: _avatarUrl,
           category: _category,
           fullName: _fullName,
@@ -178,6 +191,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
           location: _location,
           bio: _bio,
           themeColorHex: _themeColorHex,
+          cardFinish: _cardFinish,
           isDefault: _isDefault,
           techStack: _techStack,
           links: _links,
@@ -190,11 +204,15 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
       if (mounted && scope == provider.storageService.scope) {
         Navigator.pop(context);
       }
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not save. Your edits are still here.'),
+          SnackBar(
+            content: Text(
+              error is FormatException
+                  ? error.message
+                  : 'Could not save. Your edits are still here.',
+            ),
           ),
         );
       }
@@ -210,43 +228,63 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
     final role = _controller('role', _role),
         pitch = _controller('pitch', _headline);
     final bio = _controller('bio', _bio);
-    final before = '${role.text}|${pitch.text}|${bio.text}';
+    final company = _controller('company', _company);
+    final name = _controller('name', _fullName);
+    final before =
+        '$_category|${name.text}|${role.text}|${pitch.text}|${bio.text}|${company.text}';
+    final service = SyncService();
     final draft = await showDialog<Map<String, dynamic>>(
       context: context,
       barrierDismissible: false,
       builder: (_) => ProfileQuestionnaire(
+        understandReplies: true,
+        briefConversation: true,
+        voice: kIsWeb || auth?.currentUser == null
+            ? null
+            : CloudCardConversationVoice(
+                request: (path, body) {
+                  if (auth == null) throw StateError('Sign in to use voice.');
+                  return service.request(path, body, auth);
+                },
+              ),
+        profileName:
+            storage.loadAccountProfile()?.fullName ??
+            auth?.currentUser?.displayName ??
+            '',
+        applyLabel: widget.initialCard == null ? 'Create card' : 'Save card',
         initialText: [
           role.text,
           pitch.text,
           bio.text,
         ].where((s) => s.trim().isNotEmpty).join('. '),
-        purpose: _controller('title', _title).text,
+        category: _category,
+        initialName: name.text,
+        initialBio: bio.text,
+        initialRole: role.text,
         generate: (answers) async {
           if (auth == null) throw StateError('Sign in to use AI.');
-          final service = SyncService();
-          try {
-            return await service.request(
-              '/api/v1/profile/draft',
-              answers,
-              auth,
-            );
-          } finally {
-            service.close();
-          }
+          return await service.request('/api/v1/profile/draft', answers, auth);
         },
       ),
-    );
+    ).whenComplete(service.close);
     if (!mounted ||
         draft == null ||
         scope != storage.scope ||
-        before != '${role.text}|${pitch.text}|${bio.text}') {
+        before !=
+            '$_category|${name.text}|${role.text}|${pitch.text}|${bio.text}|${company.text}') {
       return;
     }
     setState(() {
+      name.text = draft['fullName'] as String;
+      company.text = draft['company'] as String? ?? '';
+      _company = company.text;
+      _category = CardCategory.values.byName(draft['category'] as String);
       role.text = draft['role'] as String;
       pitch.text = draft['pitch'] as String;
+      bio.text = draft['bio'] as String? ?? bio.text;
       _techStack = (draft['skills'] as List).cast<String>().toList();
     });
+    if (draft['createCard'] == true) await _saveCard();
   }
 
   Widget _field(
@@ -266,6 +304,8 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
     required: required,
     voiceEnabled: key == 'pitch',
     maxLines: lines,
+    maxLength: key == 'pitch' ? ContactCard.pitchLimit : null,
+    showCounter: key == 'pitch',
     keyboardType: keyboard,
     onSaved: (v) => save(v?.trim() ?? ''),
   );
@@ -275,11 +315,18 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          title,
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ),
+            if (title.startsWith('1.')) AaiCardButton(onPressed: _draftProfile),
+          ],
         ),
         const SizedBox(height: 8),
         ...children,
@@ -308,49 +355,11 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.all(20),
             children: [
-              _section('1. What is this card for?', [
-                _field(
-                  'title',
-                  'Card name *',
-                  _title,
-                  (v) => _title = v,
-                  hint: 'Work, personal, a project or an event',
-                  required: true,
-                ),
-                DropdownButtonFormField<CardCategory>(
-                  initialValue: _category,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Card purpose',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: CardCategory.values
-                      .map(
-                        (c) => DropdownMenuItem(
-                          value: c,
-                          child: Text(c.displayName),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (v) {
-                    if (v != null) setState(() => _category = v);
-                  },
-                ),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Make this my primary card'),
-                  subtitle: const Text('Show this card first in my wallet.'),
-                  value: _isDefault,
-                  onChanged: (v) => setState(() => _isDefault = v),
-                ),
-              ]),
-              _section('2. About you', [
-                OutlinedButton.icon(
-                  onPressed: _draftProfile,
-                  icon: const Icon(Icons.auto_awesome_outlined),
-                  label: const Text('Describe yourself once · draft with AI'),
-                ),
+              const Text(
+                'Card details only · changing this card does not update your account.',
+              ),
+              const SizedBox(height: 12),
+              _section('1. About you', [
                 _field(
                   'name',
                   'Full Name *',
@@ -378,7 +387,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
                   _headline,
                   (v) => _headline = v,
                   required: true,
-                  lines: 2,
+                  lines: 1,
                   hint: 'What you do and who you help',
                 ),
                 _field(
@@ -389,7 +398,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
                   lines: 3,
                 ),
               ]),
-              _section('3. Skills & tags', [
+              _section('2. Skills & tags', [
                 SkillsTagsEditor(
                   skills: _techStack,
                   role: _controller('role', _role).text,
@@ -397,7 +406,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
                   onChanged: (tags) => setState(() => _techStack = tags),
                 ),
               ]),
-              _section('4. Contact details', [
+              _section('3. Contact details', [
                 _field(
                   'email',
                   'Email',
@@ -426,7 +435,7 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
                 ),
               ]),
               ExpansionTile(
-                title: const Text('Photo & card colour'),
+                title: const Text('Photo & appearance'),
                 children: [
                   PhotoPickerTile(
                     photo: _avatarUrl,
@@ -462,14 +471,78 @@ class _CardEditorScreenState extends State<CardEditorScreen> {
                         )
                         .toList(),
                   ),
+                  CardFinishPicker(
+                    value: _cardFinish,
+                    colour: _themeColorHex,
+                    name: _controller('name', _fullName).text,
+                    onChanged: (value) => setState(() => _cardFinish = value),
+                  ),
+                  CardColourPicker(
+                    value: _themeColorHex,
+                    onChanged: (value) =>
+                        setState(() => _themeColorHex = value),
+                  ),
                   const SizedBox(height: 16),
                 ],
               ),
+              _section('Private card settings', [
+                CardPurposeRow(
+                  primary: _isDefault,
+                  onPrimaryChanged: (value) =>
+                      setState(() => _isDefault = value),
+                  purpose: DropdownButtonFormField<CardCategory>(
+                    key: ValueKey(_category),
+                    initialValue: _category,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Card purpose',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: CardCategory.values
+                        .map(
+                          (c) => DropdownMenuItem(
+                            value: c,
+                            child: Text(
+                              c.displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _category = v);
+                    },
+                  ),
+                ),
+              ]),
               const SizedBox(height: 20),
               FilledButton(
                 onPressed: _saving ? null : _saveCard,
                 child: Text(_saving ? 'Saving…' : 'Save changes'),
               ),
+              if (widget.initialCard != null) ...[
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _saving
+                      ? null
+                      : () async {
+                          final deleted = await confirmDeleteCard(
+                            context,
+                            context.read<CardsProvider>(),
+                            widget.initialCard!,
+                          );
+                          if (deleted && context.mounted) {
+                            Navigator.pop(context, true);
+                          }
+                        },
+                  icon: const Icon(Icons.delete_outline_rounded),
+                  label: const Text('Delete card'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.error,
+                  ),
+                ),
+              ],
               const SizedBox(height: 24),
             ],
           ),

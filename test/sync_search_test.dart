@@ -40,6 +40,18 @@ class TestSync extends SyncService {
     return response.future;
   }
 
+  final contexts = <List<String>>[];
+  @override
+  Future<Map<String, dynamic>> request(
+    String path,
+    Map<String, dynamic> body,
+    AuthService auth, {
+    String method = 'POST',
+  }) {
+    contexts.add(List<String>.from(body['context'] as List? ?? []));
+    return semanticSearch(body['query'] as String, auth);
+  }
+
   @override
   Future<SyncResult> sync({
     required List<SavedConnection> connections,
@@ -73,6 +85,78 @@ Map<String, dynamic> match(SavedConnection c) => {
 };
 
 void main() {
+  test(
+    'short and multilingual queries use AI; refinements reset on a new search',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final storage = await StorageService.init();
+      final service = TestSync();
+      final provider = ConnectionsProvider(storage, syncService: service);
+      final cards = CardsProvider(storage);
+      addTearDown(provider.dispose);
+      addTearDown(cards.dispose);
+      await provider.loadConnections();
+      provider.bindAuth(TestAuth(), cards: cards);
+      for (final query in ['AI', 'IT', 'डेवलपर']) {
+        provider.setSearchQuery(query);
+        await Future<void>.delayed(const Duration(milliseconds: 800));
+        expect(service.requests.last, query);
+        service.responses.last.complete({'matches': [], 'aiReranked': true});
+        await Future<void>.delayed(Duration.zero);
+      }
+      provider.refineRecall('only Flutter');
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      expect(service.contexts.last, ['डेवलपर']);
+      service.responses.last.complete({'matches': [], 'aiReranked': true});
+      await Future<void>.delayed(Duration.zero);
+      provider.setSearchQuery('plumber');
+      expect(provider.recallContext, isEmpty);
+      provider.clearForAccountSwitch();
+      expect(provider.recallContext, isEmpty);
+    },
+  );
+
+  test(
+    'AI-ranked meaning matches survive the old vector cutoff and use current local records',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final storage = await StorageService.init();
+      final developer = person(
+        'dev',
+        'Mei',
+      ).copyWith(role: 'Flutter developer', techStack: ['Flutter']);
+      await storage.saveConnections([developer]);
+      final service = TestSync();
+      final provider = ConnectionsProvider(storage, syncService: service);
+      final cards = CardsProvider(storage);
+      final auth = TestAuth();
+      await provider.loadConnections();
+      provider.bindAuth(auth, cards: cards);
+      provider.setSearchQuery('code wizard');
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      service.responses.last.complete({
+        'matches': [
+          {...match(developer), 'score': .65},
+        ],
+        'indexed': true,
+        'aiReranked': true,
+        'interpretation': 'Software developers',
+      });
+      await Future<void>.delayed(Duration.zero);
+      expect(provider.searchResults.map((r) => r.connection.id), ['dev']);
+      expect(provider.recallInterpretation, 'Software developers');
+      provider.setSearchQuery('code wizard');
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      expect(
+        service.requests.length,
+        1,
+        reason: 'Identical queries reuse the current wallet cache',
+      );
+      provider.dispose();
+      cards.dispose();
+      auth.dispose();
+    },
+  );
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
   test(

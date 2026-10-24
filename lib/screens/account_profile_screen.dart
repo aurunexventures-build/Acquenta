@@ -149,6 +149,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
     label: label,
     required: required,
     maxLines: lines,
+    voiceEnabled: !widget.setup && controller == _intro,
     maxLength: limit,
     showCounter: false,
     keyboardType: keyboard,
@@ -215,27 +216,11 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                   ],
                   Text(
                     widget.setup
-                        ? 'Start with your basic details'
-                        : 'Your details, ready for every card',
-                    style: Theme.of(context).textTheme.titleLarge,
+                        ? 'Step 1 of 2'
+                        : 'Default details for new cards',
+                    style: Theme.of(context).textTheme.labelMedium,
                   ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'New cards start with a copy of these details. You can change the information on each card.',
-                  ),
-                  const SizedBox(height: 20),
-                  if (context.read<AccountProfileProvider>().profile == null &&
-                      (context
-                              .read<AuthService?>()
-                              ?.googleProfileDefaults
-                              .isNotEmpty ??
-                          false))
-                    const Padding(
-                      padding: EdgeInsets.only(bottom: 16),
-                      child: Text(
-                        'We filled in available Google details. Check or change them before saving.',
-                      ),
-                    ),
+                  const SizedBox(height: 14),
                   _field(_first, 'First name *', required: true, limit: 100),
                   _field(_last, 'Last name (optional)', limit: 100),
                   _field(
@@ -245,13 +230,13 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                     keyboard: TextInputType.phone,
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    'Email addresses',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const Text(
-                    'The first address is your default for new cards. Contact emails do not change your sign-in email.',
-                  ),
+                  if (!widget.setup) ...[
+                    Text(
+                      'Contact emails',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const Text('Your sign-in email stays unchanged.'),
+                  ],
                   for (final entry in _emails.asMap().entries)
                     Padding(
                       key: ValueKey(entry.value),
@@ -272,7 +257,9 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                               ),
                               decoration: InputDecoration(
                                 labelText: entry.key == 0
-                                    ? 'Primary contact email'
+                                    ? (widget.setup
+                                          ? 'Email'
+                                          : 'Primary contact email')
                                     : 'Another contact email',
                                 counterText: '',
                                 border: const OutlineInputBorder(),
@@ -329,14 +316,26 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                           () => _emails.add(TextEditingController()),
                         ),
                         icon: const Icon(Icons.add),
-                        label: const Text('Add another email'),
+                        label: const Text('Add email'),
                       ),
                     ),
                   const SizedBox(height: 20),
-                  SocialLinksEditor(
-                    drafts: _socials,
-                    onChanged: () => setState(() {}),
-                  ),
+                  if (widget.setup)
+                    ExpansionTile(
+                      title: const Text('Links (optional)'),
+                      maintainState: true,
+                      children: [
+                        SocialLinksEditor(
+                          drafts: _socials,
+                          onChanged: () => setState(() {}),
+                        ),
+                      ],
+                    )
+                  else
+                    SocialLinksEditor(
+                      drafts: _socials,
+                      onChanged: () => setState(() {}),
+                    ),
                   const SizedBox(height: 20),
                   ExpansionTile(
                     title: const Text('Work details (optional)'),
@@ -358,19 +357,21 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                       _saving
                           ? 'Saving…'
                           : widget.setup
-                          ? 'Save and create my card'
+                          ? 'Save account & continue'
                           : 'Save About Me',
                     ),
                   ),
-                  if (context.watch<AccountProfileProvider>().status
-                      case final String status)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        status,
-                        style: Theme.of(context).textTheme.bodySmall,
+                  if (!widget.setup) ...[
+                    if (context.watch<AccountProfileProvider>().status
+                        case final String status)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          status,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
                       ),
-                    ),
+                  ],
                   TextButton(
                     onPressed: () => showDialog(
                       context: context,

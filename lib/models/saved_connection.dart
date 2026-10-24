@@ -15,6 +15,8 @@ class SavedConnection {
   final String email;
   final String phone;
   final String avatarUrl;
+  final String cardFinish;
+  final String themeColorHex;
   final List<String> techStack;
   final List<CardLink> links;
   final EventContext eventContext;
@@ -48,6 +50,8 @@ class SavedConnection {
     this.email = '',
     this.phone = '',
     this.avatarUrl = '',
+    this.cardFinish = 'contour',
+    this.themeColorHex = '',
     this.techStack = const [],
     this.links = const [],
     required this.eventContext,
@@ -77,6 +81,8 @@ class SavedConnection {
       'email': email,
       'phone': phone,
       'avatarUrl': avatarUrl,
+      'cardFinish': cardFinish,
+      'themeColorHex': themeColorHex,
       'techStack': techStack,
       'links': links.map((l) => l.toJson()).toList(),
       'eventContext': eventContext.toJson(),
@@ -109,6 +115,16 @@ class SavedConnection {
       email: json['email'] as String? ?? '',
       phone: json['phone'] as String? ?? '',
       avatarUrl: json['avatarUrl'] as String? ?? '',
+      cardFinish:
+          const [
+            'plain',
+            'linen',
+            'contour',
+            'monogram',
+          ].contains(json['cardFinish'])
+          ? json['cardFinish'] as String
+          : 'contour',
+      themeColorHex: json['themeColorHex'] as String? ?? '',
       techStack:
           (json['techStack'] as List<dynamic>?)
               ?.map((e) => e.toString().trim())
@@ -163,6 +179,8 @@ class SavedConnection {
     String? email,
     String? phone,
     String? avatarUrl,
+    String? cardFinish,
+    String? themeColorHex,
     List<String>? techStack,
     List<CardLink>? links,
     EventContext? eventContext,
@@ -191,6 +209,8 @@ class SavedConnection {
       email: email ?? this.email,
       phone: phone ?? this.phone,
       avatarUrl: avatarUrl ?? this.avatarUrl,
+      cardFinish: cardFinish ?? this.cardFinish,
+      themeColorHex: themeColorHex ?? this.themeColorHex,
       techStack: techStack ?? this.techStack,
       links: links ?? this.links,
       eventContext: eventContext ?? this.eventContext,

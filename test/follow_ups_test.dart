@@ -128,7 +128,9 @@ void main() {
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
       expect(provider.pendingFollowUps.single.followUpNote, 'Send proposal');
-      await tester.tap(find.text('Snooze to tomorrow'));
+      await tester.tap(find.byTooltip('Follow-up options'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Tomorrow at 9 AM'));
       await tester.pumpAndSettle();
       expect(provider.pendingFollowUps.single.followUpAt!.hour, 9);
       expect(tester.takeException(), isNull);

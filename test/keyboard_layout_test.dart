@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:contact_card_builder/models/account_profile.dart';
-import 'package:contact_card_builder/models/contact_card.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:contact_card_builder/screens/onboarding_card_builder_screen.dart';
@@ -58,12 +57,10 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(home: OnboardingCardBuilderScreen(storageService: storage)),
     );
-    await tester.enterText(find.byType(TextFormField).first, 'Work');
-    await tester.tap(find.byType(DropdownButtonFormField<CardCategory>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Professional').last);
-    await tester.pumpAndSettle();
     await tester.tap(find.text('Next'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Add tags'));
+    await tester.tap(find.text('Add tags'));
     await tester.pumpAndSettle();
     final manual = find.byKey(const ValueKey('manual-skill-tags'));
     await tester.ensureVisible(manual);
@@ -71,6 +68,9 @@ void main() {
       manual,
       List.generate(11, (i) => 'Skill $i').join(', '),
     );
+    await tester.tap(find.text('Add tags'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Add tags'));
     await tester.tap(find.text('Add tags'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(manual);
@@ -86,7 +86,8 @@ void main() {
     await tester.enterText(manual, 'New specialty');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
-    expect(tester.widget<TextField>(manual).focusNode!.hasFocus, isFalse);
+    expect(manual, findsNothing);
+    expect(find.text('Add tags'), findsOneWidget);
     expect(find.text('New specialty'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

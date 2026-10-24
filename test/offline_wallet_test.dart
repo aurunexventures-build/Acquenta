@@ -59,7 +59,7 @@ void main() {
         ),
       );
       for (var i = 0; i < 3; i++) {
-        await tester.tap(find.text('Send').at(i));
+        await tester.tap(find.byTooltip('Send card').at(i));
       }
       expect(sent, [0, 1, 2]);
       expect(tester.takeException(), isNull);

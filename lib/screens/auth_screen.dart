@@ -179,9 +179,7 @@ class _AuthScreenState extends State<AuthScreen> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              if (!keyboard &&
-                                  !tiny &&
-                                  !(compact && _register)) ...[
+                              if (!keyboard) ...[
                                 Row(
                                   children: [
                                     Container(
@@ -218,29 +216,13 @@ class _AuthScreenState extends State<AuthScreen> {
                                 children: [
                                   Expanded(
                                     child: Text(
-                                      keyboard
-                                          ? (_register
-                                                ? 'Create account'
-                                                : signedIn
-                                                ? 'Your account'
-                                                : 'Welcome back')
-                                          : tiny && !signedIn
-                                          ? (_register
-                                                ? 'Create account'
-                                                : 'Sign in')
+                                      _register
+                                          ? 'Create account'
                                           : signedIn
-                                          ? 'Your people.\nYour space.'
-                                          : _register
-                                          ? (compact
-                                                ? 'Create your wallet'
-                                                : 'Make room for\ngood connections.')
-                                          : 'Remember the moment.\nRecall the person.',
+                                          ? 'Your account'
+                                          : 'Welcome back',
                                       style: TextStyle(
-                                        fontSize: keyboard || tiny
-                                            ? 24
-                                            : compact
-                                            ? 28
-                                            : 34,
+                                        fontSize: 20,
                                         height: 1.1,
                                         fontWeight: FontWeight.w700,
                                         letterSpacing: -1.2,
@@ -313,7 +295,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                 ListTile(
                                   contentPadding: EdgeInsets.zero,
                                   leading: const CircleAvatar(
-                                    backgroundColor: Color(0xFFE9E3F7),
+                                    backgroundColor: Color(0xFFE6EEFF),
                                     child: Icon(
                                       Icons.person_outline_rounded,
                                       color: MetCueTheme.purple,

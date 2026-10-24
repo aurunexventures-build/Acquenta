@@ -44,7 +44,9 @@ export async function deleteAccountData(env: Pick<Env, 'metcue_db' | 'VECTORIZE'
   }
   await env.metcue_db.prepare('DELETE FROM admin_photo_controls WHERE photo_id IN (SELECT id FROM photos WHERE user_id=?)').bind(userId).run();
   await env.metcue_db.prepare('DELETE FROM admin_user_controls WHERE user_id=?').bind(userId).run();
-  for (const table of ['photos','card_shares','wallet_records','saved_connections','contact_cards','ai_usage','account_profiles']) {
+  await env.metcue_db.prepare('UPDATE image_safety_usage SET user_id=? WHERE user_id=?').bind('deleted:'+crypto.randomUUID(),userId).run();
+  await env.metcue_db.prepare('UPDATE text_safety_usage SET user_id=? WHERE user_id=?').bind('deleted:'+crypto.randomUUID(),userId).run();
+  for (const table of ['text_safety_checks','image_safety_checks','photos','card_shares','wallet_records','saved_connections','contact_cards','ai_usage','account_profiles']) {
     await env.metcue_db.prepare(`DELETE FROM ${table} WHERE user_id=?`).bind(userId).run();
   }
   await env.metcue_db.prepare('DELETE FROM users WHERE id=?').bind(userId).run();

@@ -1,3 +1,7 @@
+import '../widgets/card_finish_picker.dart';
+import '../widgets/card_colour_picker.dart';
+import '../services/cloud_card_conversation_voice.dart';
+import '../widgets/card_purpose_row.dart';
 import '../theme/metcue_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -10,7 +14,7 @@ import '../services/auth_service.dart';
 import '../services/photo_service.dart';
 import '../services/sync_service.dart';
 import '../widgets/interactive_card_view.dart';
-import '../widgets/recall_wireframe.dart';
+import '../widgets/aai_card_button.dart';
 import '../widgets/photo_picker_tile.dart';
 import 'account_profile_screen.dart';
 import 'profile_questionnaire.dart';
@@ -31,8 +35,7 @@ class OnboardingCardBuilderScreen extends StatefulWidget {
 class _OnboardingCardBuilderScreenState
     extends State<OnboardingCardBuilderScreen> {
   int _currentStep = 0;
-  final _titleController = TextEditingController();
-  CardCategory? _category;
+  CardCategory? _category = CardCategory.professional;
   bool _primary = false;
   String _avatarUrl = '';
   bool _portraitEdited = false;
@@ -41,6 +44,7 @@ class _OnboardingCardBuilderScreenState
   final _nameController = TextEditingController();
   final _roleController = TextEditingController();
   final _companyController = TextEditingController();
+  String _bio = '';
   final _headlineController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
@@ -107,12 +111,29 @@ class _OnboardingCardBuilderScreenState
     final auth = context.read<AuthService?>();
     final scope = widget.storageService.scope;
     final before =
-        '${_roleController.text}|${_headlineController.text}|${_selectedSkills.join(',')}';
+        '$_category|${_nameController.text}|${_roleController.text}|${_headlineController.text}|${_selectedSkills.join(',')}|${_companyController.text}';
+    final service = SyncService();
     final draft = await showDialog<Map<String, dynamic>>(
       context: context,
       barrierDismissible: false,
       builder: (_) => ProfileQuestionnaire(
-        purpose: _titleController.text.trim(),
+        understandReplies: true,
+        briefConversation: true,
+        voice: auth?.currentUser == null
+            ? null
+            : CloudCardConversationVoice(
+                request: (path, body) {
+                  if (auth == null) throw StateError('Sign in to use voice.');
+                  return service.request(path, body, auth);
+                },
+              ),
+        profileName:
+            widget.storageService.loadAccountProfile()?.fullName ??
+            auth?.currentUser?.displayName ??
+            '',
+        category: _category ?? CardCategory.professional,
+        initialName: _nameController.text,
+        initialRole: _roleController.text,
         initialText: [
           _roleController.text,
           _headlineController.text,
@@ -121,7 +142,7 @@ class _OnboardingCardBuilderScreenState
         generate: (answers) async {
           if (auth == null) throw StateError('Sign in to use AI.');
           final user = auth.currentUser?.uid;
-          final result = await SyncService().request(
+          final result = await service.request(
             '/api/v1/profile/draft',
             answers,
             auth,
@@ -133,21 +154,26 @@ class _OnboardingCardBuilderScreenState
           return result;
         },
       ),
-    );
+    ).whenComplete(service.close);
     if (!mounted ||
         draft == null ||
         scope != widget.storageService.scope ||
         before !=
-            '${_roleController.text}|${_headlineController.text}|${_selectedSkills.join(',')}') {
+            '$_category|${_nameController.text}|${_roleController.text}|${_headlineController.text}|${_selectedSkills.join(',')}|${_companyController.text}') {
       return;
     }
     setState(() {
+      _nameController.text = draft['fullName'] as String;
+      _companyController.text = draft['company'] as String? ?? '';
+      _category = CardCategory.values.byName(draft['category'] as String);
       _roleController.text = draft['role'] as String;
       _headlineController.text = draft['pitch'] as String;
+      _bio = draft['bio'] as String? ?? '';
       _selectedSkills
         ..clear()
         ..addAll((draft['skills'] as List).cast<String>());
     });
+    if (draft['createCard'] == true) _finishOnboarding();
   }
 
   void _preview() {
@@ -173,7 +199,15 @@ class _OnboardingCardBuilderScreenState
     );
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _selectedColor =
+        context.read<CardsProvider?>()?.suggestedCardColour ?? '#2563EB';
+  }
+
   // Selected Card Material Finish
+  String _cardFinish = 'contour';
   String _selectedColor = '#18181B'; // Obsidian Matte
   final List<Map<String, dynamic>> _materialFinishes = [
     {'name': 'Obsidian', 'color': '#18181B', 'accent': Colors.white},
@@ -185,7 +219,6 @@ class _OnboardingCardBuilderScreenState
 
   @override
   void dispose() {
-    _titleController.dispose();
     _nameController.dispose();
     _roleController.dispose();
     _companyController.dispose();
@@ -201,7 +234,6 @@ class _OnboardingCardBuilderScreenState
   ContactCard _buildPreviewCard() {
     return ContactCard(
       id: 'onboarding-preview',
-      title: _titleController.text.trim(),
       avatarUrl: _avatarUrl,
       category: _category ?? CardCategory.custom,
       fullName: _nameController.text.trim().isEmpty
@@ -212,11 +244,13 @@ class _OnboardingCardBuilderScreenState
           : _roleController.text.trim(),
       company: _companyController.text.trim(),
       headline: _headlineController.text.trim(),
+      bio: _bio,
       email: _emailController.text.trim(),
       phone: _phoneController.text.trim(),
       techStack: _selectedSkills.toList(),
       links: SocialLinkDraft.validLinks(_socials),
       themeColorHex: _selectedColor,
+      cardFinish: _cardFinish,
       isDefault: _primary,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
@@ -237,9 +271,18 @@ class _OnboardingCardBuilderScreenState
       return;
     }
     if (_saving) return;
+    if (_headlineController.text.trim().characters.length >
+        ContactCard.pitchLimit) {
+      setState(() => _currentStep = 0);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Keep the one-line pitch within 120 characters.'),
+        ),
+      );
+      return;
+    }
     if (_category == null ||
         [
-          _titleController,
           _nameController,
           _roleController,
           _headlineController,
@@ -266,18 +309,19 @@ class _OnboardingCardBuilderScreenState
 
     final finalCard = ContactCard(
       id: const Uuid().v4(),
-      title: _titleController.text.trim(),
       avatarUrl: _avatarUrl,
       category: _category ?? CardCategory.custom,
       fullName: _nameController.text.trim(),
       role: _roleController.text.trim(),
       company: _companyController.text.trim(),
       headline: _headlineController.text.trim(),
+      bio: _bio,
       email: _emailController.text.trim(),
       phone: _phoneController.text.trim(),
       techStack: _selectedSkills.toList(),
       links: SocialLinkDraft.validLinks(_socials),
       themeColorHex: _selectedColor,
+      cardFinish: _cardFinish,
       isDefault: _primary,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
@@ -289,11 +333,15 @@ class _OnboardingCardBuilderScreenState
       await cardsProvider.addCard(finalCard);
       if (!mounted || scope != widget.storageService.scope) return;
       await _navigateToHome();
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not save your card. Please try again.'),
+          SnackBar(
+            content: Text(
+              error is FormatException
+                  ? error.message
+                  : 'Could not save your card. Please try again.',
+            ),
           ),
         );
       }
@@ -324,7 +372,7 @@ class _OnboardingCardBuilderScreenState
               )
             : null,
         title: Text(
-          'Create your card',
+          'Step 2 · Create your card',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: Theme.of(context).textTheme.titleMedium,
@@ -496,7 +544,7 @@ class _OnboardingCardBuilderScreenState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '1. PURPOSE & IDENTITY',
+            '1. ABOUT YOU',
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.bold,
@@ -505,54 +553,24 @@ class _OnboardingCardBuilderScreenState
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
-            'What is this card for?',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: MetCueTheme.ink,
-            ),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'About you',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: MetCueTheme.ink,
+                  ),
+                ),
+              ),
+              AaiCardButton(onPressed: _draftProfile),
+            ],
           ),
+          const Text('For this card only.'),
           const SizedBox(height: 12),
-          CardTextField(
-            controller: _titleController,
-            label: 'Card name *',
-            hint: 'Work, personal, a project or an event',
-            required: true,
-          ),
-          DropdownButtonFormField<CardCategory>(
-            initialValue: _category,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Card purpose *',
-              border: OutlineInputBorder(),
-            ),
-            validator: (value) => value == null ? 'Choose a purpose.' : null,
-            items: CardCategory.values
-                .map(
-                  (c) => DropdownMenuItem(value: c, child: Text(c.displayName)),
-                )
-                .toList(),
-            onChanged: (value) => setState(() => _category = value),
-          ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Make this my primary card'),
-            subtitle: const Text('Show this card first in my wallet.'),
-            value: _primary,
-            onChanged: (v) => setState(() => _primary = v),
-          ),
           const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: _draftProfile,
-            icon: const SizedBox(
-              width: 30,
-              height: 30,
-              child: RecallWireframe(thinking: false),
-            ),
-            label: const Text('Speak or write my profile'),
-          ),
-          const SizedBox(height: 12),
           _buildInputField(
             controller: _nameController,
             label: 'Full Name *',
@@ -599,6 +617,35 @@ class _OnboardingCardBuilderScreenState
                 }),
               ),
             ],
+          ),
+          const SizedBox(height: 24),
+          const Text('Private card settings'),
+          const SizedBox(height: 12),
+          CardPurposeRow(
+            primary: _primary,
+            onPrimaryChanged: (value) => setState(() => _primary = value),
+            purpose: DropdownButtonFormField<CardCategory>(
+              initialValue: _category,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Card purpose',
+                border: OutlineInputBorder(),
+              ),
+              items: CardCategory.values
+                  .map(
+                    (c) => DropdownMenuItem(
+                      value: c,
+                      child: Text(
+                        c.displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  )
+                  .toList(),
+              key: ValueKey(_category),
+              onChanged: (value) => setState(() => _category = value),
+            ),
           ),
         ],
       ),
@@ -652,6 +699,16 @@ class _OnboardingCardBuilderScreenState
           ),
           const SizedBox(height: 16),
 
+          CardFinishPicker(
+            value: _cardFinish,
+            colour: _selectedColor,
+            name: _nameController.text,
+            onChanged: (value) => setState(() => _cardFinish = value),
+          ),
+          CardColourPicker(
+            value: _selectedColor,
+            onChanged: (value) => setState(() => _selectedColor = value),
+          ),
           // Color Material Picker
           Wrap(
             spacing: 12,
@@ -746,6 +803,10 @@ class _OnboardingCardBuilderScreenState
       hint: hint,
       required: label.endsWith('*'),
       maxLines: maxLines,
+      maxLength: controller == _headlineController
+          ? ContactCard.pitchLimit
+          : null,
+      showCounter: controller == _headlineController,
       voiceEnabled: controller == _headlineController,
       trailing:
           controller == _emailController &&

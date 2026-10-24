@@ -64,7 +64,7 @@ class RecallActivity extends StatelessWidget {
                 const Icon(
                   Icons.bolt_rounded,
                   size: 16,
-                  color: Color(0xFF6554C0),
+                  color: Color(0xFF2563EB),
                 ),
                 const SizedBox(width: 4),
                 const Expanded(
@@ -110,7 +110,7 @@ class RecallActivity extends StatelessWidget {
             children: [
               const Icon(
                 Icons.bolt_rounded,
-                color: Color(0xFF6554C0),
+                color: Color(0xFF2563EB),
                 size: 17,
               ),
               const SizedBox(width: 6),
@@ -155,7 +155,7 @@ class RecallActivity extends StatelessWidget {
                         '${entry.key} · ${entry.value}',
                         style: TextStyle(
                           color: entry.value > 0
-                              ? const Color(0xFF6554C0)
+                              ? const Color(0xFF2563EB)
                               : const Color(0xFFA69EAD),
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
@@ -184,7 +184,7 @@ class RecallActivity extends StatelessWidget {
               padding: const EdgeInsets.only(top: 6),
               child: Text(
                 '$conceptMatches related-concept matches',
-                style: const TextStyle(color: Color(0xFF6554C0), fontSize: 11),
+                style: const TextStyle(color: Color(0xFF2563EB), fontSize: 11),
               ),
             ),
           const SizedBox(height: 8),
@@ -231,7 +231,7 @@ class MatchedEvidence extends StatelessWidget {
           TextSpan(
             text: match.group(0),
             style: const TextStyle(
-              color: Color(0xFF6554C0),
+              color: Color(0xFF2563EB),
               backgroundColor: Color(0xFFE8E0F7),
               fontWeight: FontWeight.w700,
             ),

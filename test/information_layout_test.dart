@@ -69,7 +69,8 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('London'), findsOneWidget);
-      expect(find.textContaining('linkedin.com/in/alex'), findsOneWidget);
+      expect(find.textContaining('linkedin.com/in/alex'), findsNothing);
+      expect(find.byTooltip('LinkedIn'), findsOneWidget);
       expect(
         tester.getSize(find.byKey(const ValueKey('wallet-card-qa'))).height,
         lessThan(300),
@@ -106,7 +107,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       tester.getTopLeft(find.text('Jamie QA').last).dy,
-      lessThan(tester.getTopLeft(find.text('Contact & Connect')).dy),
+      lessThan(tester.getTopLeft(find.text('Contact')).dy),
     );
     expect(find.text('Interaction history'), findsNothing);
     expect(find.text('Your original memory\nBlue jacket'), findsNothing);

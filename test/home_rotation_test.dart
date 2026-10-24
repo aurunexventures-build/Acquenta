@@ -28,14 +28,15 @@ void main() {
       expect(find.byTooltip('Event'), findsOneWidget);
       expect(find.byIcon(Icons.event_outlined), findsOneWidget);
       expect(find.text('Create a card'), findsNothing);
-      expect(tester.getRect(find.text('My cards')).top, lessThan(130));
+      expect(find.text('One you.\nMany possibilities.'), findsNothing);
+      expect(tester.getRect(find.text('My cards')).top, lessThan(170));
       expect(
         tester.getRect(find.byTooltip('Create a card')).left,
         greaterThan(250),
       );
       expect(
         tester.getRect(find.byTooltip('Receive a card')).top,
-        lessThan(160),
+        lessThan(300),
       );
 
       for (final tab in [0, 1]) {

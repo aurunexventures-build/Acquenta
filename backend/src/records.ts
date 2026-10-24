@@ -39,6 +39,8 @@ export function normalizeRecord(input: unknown, kind: string): JsonObject {
   if (!result.fullName) throw new ApiError(400, 'Name is required.');
   for (const key of ['role', 'company', 'headline', 'email', 'phone', 'avatarUrl']) result[key] = text(v[key]);
   result.techStack = list(v.techStack);
+  if(v.cardFinish != null) result.cardFinish = ['plain','linen','contour','monogram'].includes(String(v.cardFinish)) ? String(v.cardFinish) : 'contour';
+  if(v.themeColorHex != null) result.themeColorHex = /^#[0-9a-fA-F]{6}$/.test(String(v.themeColorHex)) ? String(v.themeColorHex) : '';
   const links = v.links ?? [];
   if (!Array.isArray(links) || links.length > 20) throw new ApiError(400, 'Too many links.');
   result.links = links.map(raw => {
@@ -74,9 +76,13 @@ export function normalizeRecord(input: unknown, kind: string): JsonObject {
       return {id, at: date(entry.at), text: value, kind};
     });
   } else {
-    for (const key of ['title', 'category', 'location', 'bio', 'themeColorHex']) result[key] = text(v[key]);
+    for (const key of ['category', 'location', 'bio']) result[key] = text(v[key]);
     result.createdAt = date(v.createdAt);
     result.isDefault = v.isDefault === true;
+    if(v.walletOrder != null) {
+      if(!Number.isInteger(v.walletOrder) || Number(v.walletOrder)<0 || Number(v.walletOrder)>1000) throw new ApiError(400,'Invalid card order.');
+      result.walletOrder=v.walletOrder;
+    }
   }
   return result;
 }

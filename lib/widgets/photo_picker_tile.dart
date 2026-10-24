@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
+import 'package:http/http.dart' as http;
+import '../services/auth_service.dart';
 import '../services/photo_service.dart';
 import 'face_avatar.dart';
 
@@ -32,14 +35,33 @@ class _PhotoPickerTileState extends State<PhotoPickerTile> {
         requestFullMetadata: false,
       );
       if (file == null) return;
-      final photo = PhotoService.localPhoto(await file.readAsBytes());
+      var photo = PhotoService.localPhoto(await file.readAsBytes());
+      if (!mounted) return;
+      final auth = context.read<AuthService?>();
+      if (auth != null && auth.isAuthenticated) {
+        final uid = auth.currentUser?.uid;
+        final client = http.Client();
+        try {
+          photo = await PhotoService.uploadIfNeeded(
+            photo,
+            widget.isPortrait ? 'portrait' : 'connection',
+            auth,
+            client,
+          );
+        } finally {
+          client.close();
+        }
+        if (!mounted || auth.currentUser?.uid != uid) return;
+      }
       if (mounted) widget.onChanged(photo);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              e is FormatException
+              e is PhotoSafetyException
+                  ? e.message
+                  : e is FormatException
                   ? e.message
                   : 'Photo access is unavailable. Try choosing a JPEG from your files.',
             ),
@@ -78,7 +100,7 @@ class _PhotoPickerTileState extends State<PhotoPickerTile> {
               TextButton.icon(
                 onPressed: _busy ? null : () => _pick(ImageSource.gallery),
                 icon: const Icon(Icons.photo_library_outlined),
-                label: const Text('Choose photo'),
+                label: Text(_busy ? 'Checking photo…' : 'Choose photo'),
               ),
               if (kIsWeb ||
                   [
@@ -99,10 +121,10 @@ class _PhotoPickerTileState extends State<PhotoPickerTile> {
           ),
           Text(
             widget.isPortrait
-                ? 'This portrait is included when you share this identity. Photos sync when you sign in.'
+                ? 'This portrait is included when you share this identity. Photos are safety-checked before upload.'
                 : widget.photo.startsWith('portrait:')
                 ? 'This portrait came with their card. A photo you add here stays private to your wallet.'
-                : 'A photo you add here is private to your wallet. It stays available locally while offline.',
+                : 'A photo you add here is private to your wallet. It is safety-checked before upload.',
             style: const TextStyle(fontSize: 11, color: Colors.grey),
           ),
         ],

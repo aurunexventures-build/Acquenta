@@ -1,3 +1,7 @@
+import '../widgets/card_finish_picker.dart';
+import '../services/connection_insights.dart';
+import '../widgets/social_icon_row.dart';
+import '../widgets/acquenta_bot_icon.dart';
 import '../theme/metcue_theme.dart';
 import '../widgets/face_avatar.dart';
 import '../widgets/follow_up_card.dart';
@@ -10,7 +14,6 @@ import '../models/saved_connection.dart';
 import '../models/event_context.dart';
 import '../providers/connections_provider.dart';
 import '../services/vcard_service.dart';
-import '../widgets/tag_chip.dart';
 import '../widgets/voice_capture_dialog.dart';
 import 'add_connection_screen.dart';
 
@@ -44,10 +47,17 @@ class ConnectionDetailScreen extends StatelessWidget {
       );
     }
     final ev = conn.eventContext;
+    final colour = Color(
+      int.tryParse(conn.themeColorHex.replaceFirst('#', 'FF'), radix: 16) ??
+          0xFF243E65,
+    );
+    final surface = colour.computeLuminance() > .22
+        ? Color.lerp(colour, Colors.black, .65)!
+        : colour;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(conn.fullName),
+        title: const Text('Connection'),
         actions: [
           IconButton(
             icon: Icon(
@@ -106,612 +116,447 @@ class ConnectionDetailScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: theme.cardColor,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      body: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 640),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  FaceAvatar(
-                    name: conn.fullName,
-                    photo: conn.avatarUrl,
-                    radius: 28,
-                    backgroundColor: MetCueTheme.purple.withValues(alpha: .15),
-                    foregroundColor: MetCueTheme.purple,
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          surface,
+                          Color.lerp(surface, Colors.black, .16)!,
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: CustomPaint(
+                      painter: CardFinishPainter(
+                        conn.cardFinish,
+                        conn.fullName,
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          FaceAvatar(
+                            name: conn.fullName,
+                            photo: conn.avatarUrl,
+                            radius: 28,
+                            backgroundColor: Colors.white12,
+                            foregroundColor: Colors.white,
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  conn.fullName,
+                                  style: theme.textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                if (conn.role.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Text(
+                                      conn.role,
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(color: Colors.white70),
+                                    ),
+                                  ),
+                                if (conn.company.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 3),
+                                    child: Text(
+                                      conn.company,
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(color: Colors.white70),
+                                    ),
+                                  ),
+                                if (conn.headline.isNotEmpty &&
+                                    conn.headline.trim().toLowerCase() !=
+                                        conn.role.trim().toLowerCase())
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 10),
+                                    child: Text(
+                                      conn.headline,
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            height: 1.4,
+                                            color: Colors.white,
+                                          ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  if (conn.phone.isNotEmpty ||
+                      conn.email.isNotEmpty ||
+                      conn.links.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Text('Contact', style: theme.textTheme.titleSmall),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [
-                        Text(
-                          conn.fullName,
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        if (conn.role.isNotEmpty || conn.company.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              [
-                                if (conn.role.isNotEmpty) conn.role,
-                                if (conn.company.isNotEmpty) conn.company,
-                              ].join(' · '),
-                              style: theme.textTheme.bodyMedium,
+                        if (conn.phone.isNotEmpty)
+                          OutlinedButton.icon(
+                            onPressed: () => _openContact(
+                              context,
+                              Uri(scheme: 'tel', path: conn.phone),
                             ),
+                            icon: const Icon(Icons.call_outlined, size: 18),
+                            label: const Text('Call'),
                           ),
-                        if (conn.headline.isNotEmpty &&
-                            conn.headline.trim().toLowerCase() !=
-                                conn.role.trim().toLowerCase())
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Text(
-                              conn.headline,
-                              style: theme.textTheme.bodySmall,
+                        if (conn.phone.isNotEmpty)
+                          OutlinedButton.icon(
+                            onPressed: () => _openContact(
+                              context,
+                              Uri(scheme: 'sms', path: conn.phone),
                             ),
+                            icon: const Icon(
+                              Icons.chat_bubble_outline,
+                              size: 18,
+                            ),
+                            label: const Text('Message'),
+                          ),
+                        if (conn.email.isNotEmpty)
+                          OutlinedButton.icon(
+                            onPressed: () => _openContact(
+                              context,
+                              Uri(scheme: 'mailto', path: conn.email),
+                            ),
+                            icon: const Icon(Icons.mail_outline, size: 18),
+                            label: const Text('Email'),
                           ),
                       ],
                     ),
+                    if (conn.links.isNotEmpty)
+                      SocialIconRow(
+                        links: conn.links,
+                        color: MetCueTheme.purple,
+                      ),
+                    if (conn.phone.isNotEmpty || conn.email.isNotEmpty)
+                      ExpansionTile(
+                        tilePadding: EdgeInsets.zero,
+                        title: const Text(
+                          'Contact details',
+                          style: TextStyle(fontSize: 14),
+                        ),
+                        childrenPadding: const EdgeInsets.only(bottom: 12),
+                        children: [
+                          if (conn.phone.isNotEmpty)
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: const Icon(Icons.phone_outlined),
+                              title: SelectableText(conn.phone),
+                            ),
+                          if (conn.email.isNotEmpty)
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: const Icon(Icons.mail_outline),
+                              title: SelectableText(conn.email),
+                            ),
+                        ],
+                      ),
+                  ],
+                  const SizedBox(height: 24),
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(52),
+                    ),
+                    key: const ValueKey('add-connection-memory'),
+                    onPressed: () => showDialog(
+                      context: context,
+                      builder: (_) => VoiceCaptureDialog(
+                        guided: true,
+                        connection: conn,
+                        onCaptured: (updated) => provider.updateConnection(
+                          updated,
+                          expectedVersion: conn.updatedAt,
+                        ),
+                      ),
+                    ),
+                    icon: const AcquentaBotIcon(size: 24),
+                    label: const Text('Talk to Acquenta AI'),
+                  ),
+                  const SizedBox(height: 24),
+                  if (ev.eventName.isNotEmpty || ev.location.isNotEmpty) ...[
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: MetCueTheme.purple.withValues(alpha: .05),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Where you met',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 6),
+                          if (ev.eventName.isNotEmpty) Text(ev.eventName),
+                          if (ev.location.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                ev.location,
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            ),
+                          const SizedBox(height: 4),
+                          Text(
+                            DateFormat('d MMM y').format(ev.date),
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                  if (ConnectionInsights.topics(conn).isNotEmpty) ...[
+                    _sharedCardPanel(context, conn),
+                    const SizedBox(height: 20),
+                  ],
+                  FollowUpCard(connection: conn),
+                  ExpansionTile(
+                    key: const ValueKey('connection-notes'),
+                    tilePadding: EdgeInsets.zero,
+                    title: const Text('Notes & activity'),
+                    childrenPadding: const EdgeInsets.only(bottom: 16),
+                    children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          icon: const Icon(Icons.edit_note),
+                          label: const Text('Edit notes'),
+                          onPressed: () => showDialog(
+                            context: context,
+                            builder: (_) => VoiceCaptureDialog(
+                              editOnly: true,
+                              connection: conn,
+                              onCaptured: (updated) =>
+                                  provider.updateConnection(
+                                    updated,
+                                    expectedVersion: conn.updatedAt,
+                                  ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      _note(context, 'What you talked about', ev.notes),
+                      _note(
+                        context,
+                        'Your note',
+                        conn.futureSelfNote.startsWith('Note to Future Self:')
+                            ? conn.futureSelfNote.substring(20).trim()
+                            : conn.futureSelfNote,
+                      ),
+                      _note(context, 'What stood out', conn.distinctiveMemory),
+                      _note(context, 'The moment', conn.microContext),
+                      if (conn.vibeTags.isNotEmpty)
+                        _note(
+                          context,
+                          'Your impression',
+                          conn.vibeTags.join(' · '),
+                        ),
+                      if (conn.callWhen.isNotEmpty)
+                        _note(
+                          context,
+                          'Your reminders',
+                          conn.callWhen.join(' · '),
+                        ),
+                      if (ev.tags.isNotEmpty)
+                        _note(context, 'Your tags', ev.tags.join(' · ')),
+                      if (conn.rawCue.isNotEmpty ||
+                          conn.cueConversation.isNotEmpty)
+                        ExpansionTile(
+                          tilePadding: EdgeInsets.zero,
+                          title: const Text(
+                            'Original conversation',
+                            style: TextStyle(fontSize: 14),
+                          ),
+                          children: [
+                            _note(context, 'Your original memory', conn.rawCue),
+                            for (final turn in conn.cueConversation)
+                              _note(
+                                context,
+                                turn['question'] ?? '',
+                                turn['answer'] ?? '',
+                              ),
+                          ],
+                        ),
+                      const SizedBox(height: 12),
+                      RelationshipTools(connection: conn, compact: true),
+                    ],
+                  ),
+                  const SizedBox(height: 28),
+                  const Divider(),
+                  const SizedBox(height: 20),
+                  OutlinedButton.icon(
+                    key: const ValueKey('export-connection-contact'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(50),
+                    ),
+                    icon: const Icon(Icons.person_add_alt_1_outlined, size: 20),
+                    label: const Text('Save to phone contacts'),
+                    onPressed: () async {
+                      final box = context.findRenderObject() as RenderBox?;
+                      try {
+                        await VCardService.exportContact(
+                          vcard: VCardService.generateConnectionVCard(conn),
+                          name: conn.fullName,
+                          sharePositionOrigin: box == null
+                              ? null
+                              : box.localToGlobal(Offset.zero) & box.size,
+                        );
+                      } catch (_) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Could not open contacts. Please try again.',
+                              ),
+                            ),
+                          );
+                        }
+                      }
+                    },
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 12),
-            // Direct Communication Actions
-            if (conn.phone.isNotEmpty ||
-                conn.email.isNotEmpty ||
-                conn.links.isNotEmpty)
-              Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Contact & Connect',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      if (conn.phone.isNotEmpty)
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const CircleAvatar(
-                            child: Icon(Icons.phone, size: 18),
-                          ),
-                          title: Text(
-                            conn.phone,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: const Text('Phone Number'),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.call,
-                                  color: Colors.green,
-                                ),
-                                onPressed: () =>
-                                    launchUrl(Uri.parse('tel:${conn.phone}')),
-                              ),
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.sms,
-                                  color: MetCueTheme.purple,
-                                ),
-                                onPressed: () =>
-                                    launchUrl(Uri.parse('sms:${conn.phone}')),
-                              ),
-                            ],
-                          ),
-                        ),
-                      if (conn.email.isNotEmpty)
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const CircleAvatar(
-                            child: Icon(Icons.email, size: 18),
-                          ),
-                          title: Text(
-                            conn.email,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: const Text('Email Address'),
-                          trailing: IconButton(
-                            icon: const Icon(
-                              Icons.send_rounded,
-                              color: MetCueTheme.purple,
-                            ),
-                            onPressed: () =>
-                                launchUrl(Uri.parse('mailto:${conn.email}')),
-                          ),
-                        ),
-                      ...conn.links.map((link) {
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: CircleAvatar(
-                            child: Icon(link.defaultIcon, size: 18),
-                          ),
-                          title: Text(link.title),
-                          subtitle: Text(
-                            link.url,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          trailing: const Icon(Icons.open_in_new, size: 18),
-                          onTap: () async {
-                            final uri = Uri.tryParse(link.url);
-                            if (uri != null && await canLaunchUrl(uri)) {
-                              await launchUrl(uri);
-                            }
-                          },
-                        );
-                      }),
-                    ],
-                  ),
-                ),
-              ),
+          ),
+        ),
+      ),
+    );
+  }
 
-            FilledButton.icon(
-              onPressed: () => showDialog(
-                context: context,
-                builder: (_) => VoiceCaptureDialog(
-                  connection: conn,
-                  onCaptured: (updated) => provider.updateConnection(
-                    updated,
-                    expectedVersion: conn.updatedAt,
-                  ),
-                ),
+  Widget _note(BuildContext context, String title, String value) {
+    if (value.trim().isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: Theme.of(context).hintColor,
               ),
-              icon: const Icon(Icons.mic),
-              label: const Text('Add a memory cue'),
             ),
-
-            // Export to Phone Contacts (vCard)
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              icon: const Icon(Icons.person_add_alt_1_rounded),
-              label: const Text(
-                'Save to phone contacts',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              onPressed: () async {
-                final box = context.findRenderObject() as RenderBox?;
-                try {
-                  await VCardService.exportContact(
-                    vcard: VCardService.generateConnectionVCard(conn),
-                    name: conn.fullName,
-                    sharePositionOrigin: box == null
-                        ? null
-                        : box.localToGlobal(Offset.zero) & box.size,
-                  );
-                } catch (_) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Could not open contacts. Please try again.',
-                        ),
-                        duration: Duration(seconds: 3),
-                      ),
-                    );
-                  }
-                }
-              },
-            ),
-
-            // Only show meeting context that the user actually saved.
-            if (ev.eventName.isNotEmpty ||
-                ev.location.isNotEmpty ||
-                ev.notes.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: MetCueTheme.purple.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: MetCueTheme.purple.withValues(alpha: 0.4),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.psychology_alt_rounded,
-                          color: MetCueTheme.purple,
-                          size: 22,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Where you met',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: MetCueTheme.purple,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.event,
-                          size: 16,
-                          color: MetCueTheme.purple,
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            ev.eventName.isNotEmpty
-                                ? ev.eventName
-                                : 'Meeting details',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          DateFormat('MMM d, y').format(ev.date),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: theme.hintColor,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (ev.location.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.location_on_outlined,
-                            size: 16,
-                            color: theme.hintColor,
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              ev.location,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: theme.hintColor,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                    if (ev.notes.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      const Divider(height: 1),
-                      const SizedBox(height: 10),
-                      const Text(
-                        'What you talked about',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        ev.notes,
-                        style: const TextStyle(fontSize: 13, height: 1.4),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-
-            // Message to Future Self
-            if (conn.futureSelfNote.isNotEmpty || conn.vibeTags.isNotEmpty) ...[
-              const SizedBox(height: 18),
-              Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(
-                    color: MetCueTheme.purple.withValues(alpha: 0.35),
-                    width: 1,
-                  ),
-                ),
-                color: theme.cardColor,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.mail_outline_rounded,
-                            size: 18,
-                            color: MetCueTheme.purple,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Message to My Future Self',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: MetCueTheme.purple,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (conn.futureSelfNote.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: MetCueTheme.purple.withValues(alpha: 0.06),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: MetCueTheme.purple.withValues(alpha: 0.15),
-                            ),
-                          ),
-                          child: Text(
-                            '"${conn.futureSelfNote.startsWith('Note to Future Self:') ? conn.futureSelfNote.substring(20).trim() : conn.futureSelfNote}"',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontStyle: FontStyle.italic,
-                              height: 1.45,
-                            ),
-                          ),
-                        ),
-                      ],
-                      if (conn.vibeTags.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: conn.vibeTags.map((vibe) {
-                            return TagChip(
-                              label: '✨ $vibe',
-                              backgroundColor: Color(
-                                0xFF6554C0,
-                              ).withValues(alpha: 0.12),
-                              textColor: MetCueTheme.purple,
-                            );
-                          }).toList(),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            ],
-
-            // Cognitive Memory Anchors (1-Year Recall)
-            if (conn.distinctiveMemory.isNotEmpty ||
-                conn.microContext.isNotEmpty ||
-                conn.callWhen.isNotEmpty) ...[
-              const SizedBox(height: 18),
-              Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(
-                    color: MetCueTheme.purple.withValues(alpha: 0.35),
-                    width: 1,
-                  ),
-                ),
-                color: theme.cardColor,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.hub_rounded,
-                            size: 18,
-                            color: MetCueTheme.purple,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Cognitive Recall Anchors',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: MetCueTheme.purple,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (conn.distinctiveMemory.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        const Text(
-                          'Visual & Sensory Quirk (Memory Cue):',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 11,
-                            color: MetCueTheme.muted,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(
-                              Icons.visibility_outlined,
-                              size: 15,
-                              color: MetCueTheme.purple,
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                conn.distinctiveMemory,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  height: 1.35,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                      if (conn.microContext.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        const Text(
-                          'What you remember',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 11,
-                            color: MetCueTheme.muted,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.place_outlined,
-                              size: 15,
-                              color: MetCueTheme.purple,
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                conn.microContext,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                      if (conn.callWhen.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        const Text(
-                          'Reach out about',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 11,
-                            color: MetCueTheme.muted,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: conn.callWhen.map((trigger) {
-                            return TagChip(
-                              label: '📞 $trigger',
-                              backgroundColor: Colors.teal.withValues(
-                                alpha: 0.12,
-                              ),
-                              textColor: Color(0xFF326C68),
-                            );
-                          }).toList(),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            ],
-
-            const SizedBox(height: 20),
-
-            // Skills & interests
-            if (conn.techStack.isNotEmpty || ev.tags.isNotEmpty) ...[
-              Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Skills & interests',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: {...conn.techStack, ...ev.tags}
-                            .map(
-                              (t) => TagChip(
-                                label: t,
-                                backgroundColor: Color(
-                                  0xFF6554C0,
-                                ).withValues(alpha: 0.1),
-                                textColor: MetCueTheme.purple,
-                              ),
-                            )
-                            .toList(),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-            ],
-
-            const SizedBox(height: 24),
-
-            ExpansionTile(
-              title: const Text('Notes & activity'),
-              subtitle: const Text('Memories, conversations and follow-ups'),
-              children: [
-                const SizedBox(height: 16),
-                FollowUpCard(connection: conn),
-                RelationshipTools(connection: conn),
-                if (conn.rawCue.isNotEmpty)
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text('Your original memory\n${conn.rawCue}'),
-                    ),
-                  ),
-                for (final turn in conn.cueConversation)
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text('${turn['question']}\n${turn['answer']}'),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 40),
+            const SizedBox(height: 5),
+            SelectableText(value, style: const TextStyle(height: 1.4)),
           ],
         ),
       ),
     );
+  }
+
+  Widget _sharedCardPanel(BuildContext context, SavedConnection connection) {
+    final topics = ConnectionInsights.topics(connection);
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: MetCueTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.badge_outlined,
+                size: 18,
+                color: MetCueTheme.purple,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'From their card',
+                style: Theme.of(
+                  context,
+                ).textTheme.labelMedium?.copyWith(color: MetCueTheme.purple),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Good topics to talk about',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final topic in topics.take(5))
+                Chip(
+                  label: Text(topic),
+                  backgroundColor: MetCueTheme.purple.withValues(alpha: .06),
+                  side: BorderSide.none,
+                ),
+              if (topics.length > 5)
+                ActionChip(
+                  label: Text('+${topics.length - 5} more'),
+                  onPressed: () => showDialog(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Skills & interests'),
+                      content: SingleChildScrollView(
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            for (final topic in topics)
+                              Chip(label: Text(topic)),
+                          ],
+                        ),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('Done'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openContact(BuildContext context, Uri uri) async {
+    try {
+      if (await launchUrl(uri)) return;
+    } catch (_) {}
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open this contact option.')),
+      );
+    }
   }
 }

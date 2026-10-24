@@ -59,3 +59,11 @@ The signed-out page shows only the sign-in card and AuruNex Ventures branding. N
 Owners configured in `ADMIN_EMAILS` can open **Administrators**, add an email, or remove delegated access. The recipient uses their own verified Firebase account; this grants access directly without sending an email or creating an account. Delegated administrators can review and moderate, but cannot manage administrators or permanently delete users. Owner access cannot be removed through this interface. Each request rechecks database access, so removal takes effect on the next API request. Admin accounts are protected from account suspension and deletion. Grants and revocations are audited.
 
 Apply `backend/migrations/0007_admin_access.sql` before deploying this version.
+
+## Company AI usage and provider quota
+
+AI & usage reports actual provider invocations across the whole app, grouped by provider and model. `0008_ai_model_usage.sql` adds anonymous daily counters and last-observed Groq quota headers. The backend meters text generation, online speech/transcription, and all embedding calls, including background batches and multi-call card conversations. Successes/failures and returned token usage are tracked. No user ID, prompt, generated text or recording is stored. Account deletion does not erase these anonymous counters.
+
+Groq daily request and per-minute token quota snapshots update on model responses, including rate-limit errors. Values are explicitly historical; expired reset windows are labelled. They may include organisation usage outside this app, and model pools must not be summed. Cloudflare account neuron usage and billed costs are unavailable through the current bindings. Provider-console links remain available. Pre-metering requests cannot be reliably split by model and are excluded. The separate per-user safety limit is still enforced by the app but is no longer presented as company quota.
+
+Apply the additive migration, deploy the backend to begin collection, then deploy admin. Both Workers keep their existing credentials and bindings. Metering failures log a safe event and preserve the original AI result or error.

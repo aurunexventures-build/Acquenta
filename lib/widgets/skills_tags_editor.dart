@@ -53,7 +53,7 @@ class _SkillsTagsEditorState extends State<SkillsTagsEditor>
   void didChangeMetrics() => _revealManualInput();
   final _experience = TextEditingController(), _tags = TextEditingController();
   List<String> _suggestions = [];
-  bool _busy = false;
+  bool _busy = false, _manualOpen = false;
   String? _error;
   Future<List<String>> _extract(String text) async {
     if (widget.extract != null) return widget.extract!(text);
@@ -128,7 +128,7 @@ class _SkillsTagsEditorState extends State<SkillsTagsEditor>
       if (mounted) {
         setState(
           () => _error =
-              'Could not extract skills yet. Your description is kept. Try again, or add comma-separated tags below.',
+              'Could not extract skills yet. Your description is kept. Try again or tap Add tags.',
         );
       }
     } finally {
@@ -226,36 +226,60 @@ class _SkillsTagsEditorState extends State<SkillsTagsEditor>
             .toList(),
       ),
       const SizedBox(height: 12),
-      Column(
-        key: _manualArea,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text('Add tags manually · separate skills with commas'),
-          const SizedBox(height: 8),
-          TextField(
-            key: const ValueKey('manual-skill-tags'),
-            controller: _tags,
-            focusNode: _manualFocus,
-            textInputAction: TextInputAction.done,
-            scrollPadding: const EdgeInsets.only(top: 40, bottom: 120),
-            maxLength: 1000,
-            maxLines: 2,
-            decoration: const InputDecoration(
-              hintText: 'Plumbing, Bathroom fitting, Android development',
-              border: OutlineInputBorder(),
-            ),
-            onSubmitted: (_) => _addManual(),
+      if (!_manualOpen)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: () {
+              setState(() => _manualOpen = true);
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && _manualOpen) _manualFocus.requestFocus();
+              });
+            },
+            icon: const Icon(Icons.add),
+            label: const Text('Add tags'),
           ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: OutlinedButton.icon(
-              onPressed: _addManual,
-              icon: const Icon(Icons.add),
-              label: const Text('Add tags'),
+        )
+      else
+        Column(
+          key: _manualArea,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              key: const ValueKey('manual-skill-tags'),
+              controller: _tags,
+              focusNode: _manualFocus,
+              textInputAction: TextInputAction.done,
+              scrollPadding: const EdgeInsets.only(top: 40, bottom: 120),
+              maxLength: 1000,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                hintText: 'Design, Flutter, Photography',
+                helperText: 'Separate tags with commas',
+                counterText: '',
+                border: OutlineInputBorder(),
+              ),
+              onSubmitted: (_) => _addManual(),
             ),
-          ),
-        ],
-      ),
+            Wrap(
+              spacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _addManual,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add tags'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    _manualFocus.unfocus();
+                    setState(() => _manualOpen = false);
+                  },
+                  child: const Text('Cancel'),
+                ),
+              ],
+            ),
+          ],
+        ),
       Text(
         '${widget.skills.length}/12 tags · up to 50 characters per tag',
         style: Theme.of(context).textTheme.bodySmall,
@@ -269,8 +293,12 @@ class _SkillsTagsEditorState extends State<SkillsTagsEditor>
   );
   void _addManual() {
     try {
+      if (_tags.text.trim().isEmpty) return;
       _add(SkillTags.parse(_tags.text));
-      if (_error == null) FocusScope.of(context).unfocus();
+      if (_error == null) {
+        _manualFocus.unfocus();
+        setState(() => _manualOpen = false);
+      }
     } on FormatException catch (e) {
       setState(() => _error = e.message);
     }

@@ -21,7 +21,7 @@ class PolicyScreen extends StatelessWidget {
     ),
     (
       'AI, voice and photos',
-      'When you ask for AI skill or cue suggestions or semantic recall, relevant text is processed through Cloudflare Workers AI. Voice dictation and speech playback use your device’s speech services, which may use their providers’ online processing. Acquenta does not continuously record conversations. Paper-card text recognition runs on-device; scanning does not upload the card photo. Photos saved to a signed-in wallet may upload during sync.',
+      'AI features send relevant saved text and your requests to Groq or Cloudflare Workers AI. Cloud voice sends recorded replies to Groq for transcription and generates spoken replies through Groq; some device speech features may use device providers. Acquenta does not continuously record conversations. Paper-card text recognition runs on-device. Photos you upload, including private wallet photos, are sent to Google Cloud Vision for safety screening and text detection. Text detected in a photo may be sent to OpenAI for moderation. Rejected uploads are not stored; existing server photos are also checked before being served. Local-only photos are checked when uploaded. Card and account text you save while signed in is also screened by Google Cloud Natural Language for profanity and abusive content before saving to the cloud or sharing. Private connection notes are excluded from this text check. Local profanity rules also apply before saving on your device. These checks can make mistakes.',
     ),
     (
       'Sharing is your choice',
@@ -33,7 +33,7 @@ class PolicyScreen extends StatelessWidget {
     ),
     (
       'Retention and deletion',
-      'Wallet information remains until you delete it or request removal. Deleting a connection creates a sync deletion record so old devices do not restore it. Signing out does not erase the account’s local cache. Deleting the app does not delete a synced account or recipient copies. You can delete your account from Account & privacy. Limited deletion markers and moderation audit records support security and prevent restoration of deleted data. Contact us for information about provider backups and retention.',
+      'Wallet information remains until you delete it or request removal. Deleting a connection creates a sync deletion record so old devices do not restore it. Signing out does not erase the account’s local cache. Deleting the app does not delete a synced account or recipient copies. You can delete your account from Account & privacy. Limited deletion markers and moderation audit records support security and prevent restoration of deleted data. Account deletion removes image-safety decisions; anonymised usage totals remain to enforce service limits. Contact us for information about provider backups and retention.',
     ),
     (
       'Your choices and rights',

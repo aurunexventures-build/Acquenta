@@ -1,11 +1,10 @@
+import '../widgets/delete_card_dialog.dart';
 import '../theme/metcue_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../models/contact_card.dart';
 import '../providers/cards_provider.dart';
-import '../services/vcard_service.dart';
 import '../widgets/contact_card_widget.dart';
 import '../widgets/qr_share_dialog.dart';
 import 'card_editor_screen.dart';
@@ -41,44 +40,43 @@ class CardDetailScreen extends StatelessWidget {
         ),
       );
     }
-    final card = cardsProvider.cards.firstWhere(
-      (c) => c.id == cardId,
-      orElse: () => cardsProvider.cards.isNotEmpty
-          ? cardsProvider.cards.first
-          : ContactCard(
-              id: '',
-              title: '',
-              fullName: 'Not Found',
-              createdAt: DateTime.now(),
-              updatedAt: DateTime.now(),
-            ),
-    );
+    final card = cardsProvider.cards.where((c) => c.id == cardId).firstOrNull;
+    if (card == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Card unavailable')),
+        body: const Center(
+          child: Text('This card is no longer in your wallet.'),
+        ),
+      );
+    }
 
     final accentColor = _parseColor(card.themeColorHex);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(card.title.isNotEmpty ? card.title : 'Visiting Card'),
+        title: Text(card.fullName),
         actions: [
           IconButton(
-            tooltip: card.isDefault ? 'Primary card' : 'Make primary card',
-            icon: Icon(
-              card.isDefault ? Icons.star_rounded : Icons.star_outline_rounded,
-            ),
-            onPressed: card.isDefault
-                ? null
-                : () => cardsProvider.setDefaultCard(card.id),
+            tooltip: 'Delete card',
+            icon: const Icon(Icons.delete_outline_rounded),
+            onPressed: () async {
+              if (await confirmDeleteCard(context, cardsProvider, card) &&
+                  context.mounted) {
+                Navigator.pop(context);
+              }
+            },
           ),
           IconButton(
             icon: const Icon(Icons.edit_outlined),
             tooltip: 'Edit Card',
-            onPressed: () {
-              Navigator.push(
+            onPressed: () async {
+              final deleted = await Navigator.push<bool>(
                 context,
                 MaterialPageRoute(
                   builder: (_) => CardEditorScreen(initialCard: card),
                 ),
               );
+              if (deleted == true && context.mounted) Navigator.pop(context);
             },
           ),
           IconButton(
@@ -189,48 +187,6 @@ class CardDetailScreen extends StatelessWidget {
                           defaultEventContext: cardsProvider.activeEventMode,
                         ),
                       );
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    icon: const Icon(Icons.contact_page_outlined, size: 20),
-                    label: const Text(
-                      'Save contact',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    onPressed: () async {
-                      final box = context.findRenderObject() as RenderBox?;
-                      try {
-                        await VCardService.exportContact(
-                          vcard: VCardService.generateVCard(
-                            card: card,
-                            eventContext: cardsProvider.activeEventMode,
-                          ),
-                          name: card.fullName,
-                          sharePositionOrigin: box == null
-                              ? null
-                              : box.localToGlobal(Offset.zero) & box.size,
-                        );
-                      } catch (_) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Could not open contacts. Please try again.',
-                              ),
-                              duration: Duration(seconds: 3),
-                            ),
-                          );
-                        }
-                      }
                     },
                   ),
                 ),

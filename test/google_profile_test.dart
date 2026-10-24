@@ -113,9 +113,7 @@ void main() {
       );
       final email = tester
           .widgetList<TextField>(find.byType(TextField))
-          .firstWhere(
-            (w) => w.decoration?.labelText == 'Primary contact email',
-          );
+          .firstWhere((w) => w.decoration?.labelText == 'Email');
       expect(
         email.controller!.text,
         saved ? 'chosen@example.com' : 'sam@example.com',

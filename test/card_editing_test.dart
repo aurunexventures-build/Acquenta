@@ -1,3 +1,4 @@
+import 'aai_test_helpers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -8,7 +9,6 @@ import 'package:contact_card_builder/providers/cards_provider.dart';
 import 'package:contact_card_builder/screens/card_editor_screen.dart';
 import 'package:contact_card_builder/screens/profile_questionnaire.dart';
 import 'package:contact_card_builder/services/storage_service.dart';
-import 'package:contact_card_builder/widgets/card_text_field.dart';
 
 ContactCard card(String id, {bool primary = false}) => ContactCard(
   id: id,
@@ -22,6 +22,50 @@ ContactCard card(String id, {bool primary = false}) => ContactCard(
 );
 
 void main() {
+  testWidgets(
+    'pitch length is enforced even after scrolling its field off-screen',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final storage = await StorageService.init();
+      final provider = CardsProvider(storage);
+      await provider.loadCards();
+      await provider.addCard(card('work'));
+      addTearDown(provider.dispose);
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(
+          value: provider,
+          child: MaterialApp(
+            home: CardEditorScreen(initialCard: provider.cards.single),
+          ),
+        ),
+      );
+      final pitch = find.descendant(
+        of: find.byKey(const ValueKey('edit-pitch')),
+        matching: find.byType(TextFormField),
+      );
+      await tester.scrollUntilVisible(
+        pitch,
+        180,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.enterText(pitch, List.filled(121, 'a').join());
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.scrollUntilVisible(
+        find.text('Private card settings'),
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text('Save').first);
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Keep the one-line pitch within 120 characters.'),
+        findsOneWidget,
+      );
+      expect(provider.cards.single.headline, 'I design wedding flowers.');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   test(
     'primary is chosen explicitly and never replaced by creation or deletion',
     () async {
@@ -99,7 +143,9 @@ void main() {
     },
   );
 
-  testWidgets('empty wallet starts directly below the brand', (tester) async {
+  testWidgets('empty wallet retains the introductory caption below the brand', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
     final storage = await StorageService.init();
     await storage.setOnboardingCompleted(true);
@@ -111,7 +157,8 @@ void main() {
       ContactCardBuilderApp(storageService: storage, requireSignIn: false),
     );
     await tester.pumpAndSettle();
-    expect(tester.getRect(find.text('My cards')).top, lessThan(130));
+    expect(find.text('One you.\nMany possibilities.'), findsNothing);
+    expect(tester.getRect(find.text('My cards')).top, lessThan(170));
     expect(find.byTooltip('Create a card'), findsOneWidget);
     expect(find.text('Create a card'), findsNothing);
     expect(tester.takeException(), isNull);
@@ -128,7 +175,10 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
+          // The real dialog is on the navigator overlay; apply keyboard insets once.
+          resizeToAvoidBottomInset: false,
           body: ProfileQuestionnaire(
+            voice: SilentCardVoice(),
             generate: (_) async => {
               'role': 'Designer',
               'pitch': 'I create flowers.',
@@ -139,21 +189,26 @@ void main() {
       ),
     );
     await tester.enterText(
-      find.byType(TextFormField).first,
+      find.byKey(const ValueKey('conversation-reply')),
       'I create flowers for weddings.',
     );
     tester.view.viewInsets = const FakeViewPadding(bottom: 340);
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byType(TextFormField).first);
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('conversation-reply')),
+    );
     await tester.pumpAndSettle();
     expect(find.text('Add more detail'), findsNothing);
-    expect(find.text('Close'), findsOneWidget);
-    expect(tester.getRect(find.text('Close')).bottom, lessThanOrEqualTo(512));
+    expect(find.byTooltip('Close'), findsOneWidget);
+    expect(
+      tester.getRect(find.byTooltip('Close')).bottom,
+      lessThanOrEqualTo(512),
+    );
     expect(tester.takeException(), isNull);
     tester.view.resetViewInsets();
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Draft my card'));
-    await tester.pumpAndSettle();
-    expect(find.byType(CardTextField), findsNWidgets(2));
+    await answerCardQuestions(tester);
+    expect(find.byType(TextFormField), findsNothing);
+    expect(find.text('Review your answers'), findsOneWidget);
   });
 }

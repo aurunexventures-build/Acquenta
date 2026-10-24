@@ -67,6 +67,19 @@ class CardExchangeService {
     return SavedConnection(
       id: id,
       fullName: name,
+      cardFinish:
+          const [
+            'plain',
+            'linen',
+            'contour',
+            'monogram',
+          ].contains(get('X-ACQUENTA-FINISH'))
+          ? get('X-ACQUENTA-FINISH')
+          : 'contour',
+      themeColorHex:
+          RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(get('X-ACQUENTA-COLOR'))
+          ? get('X-ACQUENTA-COLOR')
+          : '',
       avatarUrl: RegExp(r'^[\w-]{36}$').hasMatch(get('X-METCUE-PORTRAIT'))
           ? 'portrait:${get('X-METCUE-PORTRAIT')}'
           : '',
@@ -101,6 +114,8 @@ class CardExchangeService {
     return SavedConnection(
       id: const Uuid().v5(Namespace.url.value, 'metcue:${card.id}'),
       fullName: card.fullName,
+      cardFinish: card.cardFinish,
+      themeColorHex: card.themeColorHex,
       avatarUrl: card.avatarUrl,
       role: card.role,
       company: card.company,

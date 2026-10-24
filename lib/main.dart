@@ -11,6 +11,7 @@ import 'dart:async';
 import 'providers/connections_provider.dart';
 import 'services/auth_service.dart';
 import 'services/storage_service.dart';
+import 'services/sync_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/auth_screen.dart';
 import 'screens/onboarding_card_builder_screen.dart';
@@ -89,6 +90,8 @@ class AccountWalletGate extends StatefulWidget {
 class _AccountWalletGateState extends State<AccountWalletGate>
     with WidgetsBindingObserver {
   late final AuthService _auth;
+  late final CardsProvider _checkedCards;
+  late final AccountProfileProvider _checkedProfile;
   String? _uid;
   bool _switching = false;
   bool _offlineMode = false;
@@ -99,11 +102,34 @@ class _AccountWalletGateState extends State<AccountWalletGate>
     WidgetsBinding.instance.addObserver(this);
     _auth = context.read<AuthService>();
     _auth.addListener(_onAuth);
+    _checkedCards = context.read<CardsProvider>();
+    _checkedProfile = context.read<AccountProfileProvider>();
+    _checkedCards.onValidateText = (card) => _checkText({
+      'card': {...card.toJson(), 'avatarUrl': ''},
+    });
+    _checkedProfile.onValidateText = (profile) =>
+        _checkText({'profile': profile.toJson()});
     context.read<ConnectionsProvider>().bindAuth(
       _auth,
       cards: context.read<CardsProvider>(),
     );
     _onAuth();
+  }
+
+  Future<void> _checkText(Map<String, dynamic> body) async {
+    if (!_auth.isAuthenticated) return;
+    final uid = _auth.currentUser?.uid;
+    final service = SyncService();
+    try {
+      await service.request('/api/v1/text/check', body, _auth);
+      if (!mounted || _auth.currentUser?.uid != uid) {
+        throw StateError('Account changed.');
+      }
+    } catch (error) {
+      throw FormatException(error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      service.close();
+    }
   }
 
   void _onAuth() {
@@ -143,6 +169,8 @@ class _AccountWalletGateState extends State<AccountWalletGate>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _auth.removeListener(_onAuth);
+    _checkedCards.onValidateText = null;
+    _checkedProfile.onValidateText = null;
     super.dispose();
   }
 

@@ -1,3 +1,4 @@
+import {aiUsage} from './ai_usage';
 import {deleteAccountData} from '../../backend/src/account_deletion';
 import {firebaseDeletionSession} from './firebase_admin';
 import {createRemoteJWKSet,jwtVerify, type JWTPayload} from 'jose';
@@ -45,6 +46,7 @@ export function createAdminHandler(authenticate=verify, deletionSession=firebase
    }
    return json({error:'Method not allowed.'},405);
   }
+  if(url.pathname==='/api/ai-usage'&&request.method==='GET')return json(await aiUsage(env));
   if(url.pathname==='/api/overview'&&request.method==='GET'){
    const summary=await env.metcue_db.prepare(`SELECT
     (SELECT count(*) FROM (SELECT user_id FROM wallet_records UNION SELECT id FROM users UNION SELECT user_id FROM photos) o WHERE NOT EXISTS(SELECT 1 FROM account_deletions d WHERE d.user_id=o.user_id)) AS users,

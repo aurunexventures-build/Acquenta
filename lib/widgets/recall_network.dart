@@ -148,7 +148,7 @@ class _RecallNetworkState extends State<RecallNetwork>
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
-                        color: Color(0xFF6554C0),
+                        color: Color(0xFF2563EB),
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                       ),
@@ -182,11 +182,11 @@ class _RecallNetworkState extends State<RecallNetwork>
                             photo: c.avatarUrl,
                             radius: 18,
                             backgroundColor: i == 0
-                                ? const Color(0xFF6554C0)
+                                ? const Color(0xFF2563EB)
                                 : const Color(0xFFE1D9F0),
                             foregroundColor: i == 0
                                 ? Colors.white
-                                : const Color(0xFF6554C0),
+                                : const Color(0xFF2563EB),
                           ),
                           const SizedBox(height: 5),
                           Text(
@@ -240,7 +240,7 @@ class _FlowPainter extends CustomPainter {
         to.dy,
       );
     final paint = Paint()
-      ..color = top ? const Color(0xCB6554C0) : const Color(0x766554C0)
+      ..color = top ? const Color(0xCB2563EB) : const Color(0x762563EB)
       ..strokeWidth = top ? 2 : 1.2
       ..style = PaintingStyle.stroke;
     for (final metric in path.computeMetrics()) {
@@ -268,7 +268,7 @@ class _FlowPainter extends CustomPainter {
         final label = TextPainter(
           text: TextSpan(
             text: terms[i],
-            style: const TextStyle(fontSize: 9, color: Color(0xFF6554C0)),
+            style: const TextStyle(fontSize: 9, color: Color(0xFF2563EB)),
           ),
           textDirection: TextDirection.ltr,
           maxLines: 1,
@@ -287,7 +287,7 @@ class _FlowPainter extends CustomPainter {
       );
     }
     final orbit = Paint()
-      ..color = const Color(0x1D6554C0)
+      ..color = const Color(0x1D2563EB)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
     canvas.drawOval(

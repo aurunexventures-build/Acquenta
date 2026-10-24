@@ -50,6 +50,37 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
   test(
+    'blocked and unavailable photo checks stay uncached and expose safe messages',
+    () async {
+      final auth = TestAuth();
+      final local = PhotoService.localPhoto(
+        Uint8List.fromList([255, 216, 255, 224]),
+      );
+      for (final status in [422, 429, 503]) {
+        var calls = 0;
+        final client = MockClient((_) async {
+          calls++;
+          return http.Response('{"error":"secret provider details"}', status);
+        });
+        for (var i = 0; i < 2; i++) {
+          await expectLater(
+            PhotoService.uploadIfNeeded(local, 'portrait', auth, client),
+            throwsA(
+              isA<PhotoSafetyException>().having(
+                (e) => e.message,
+                'safe message',
+                isNot(contains('secret')),
+              ),
+            ),
+          );
+        }
+        expect(calls, 2);
+        client.close();
+      }
+      auth.dispose();
+    },
+  );
+  test(
     'photo bytes stay locally available and upload once per account and purpose',
     () async {
       final bytes = Uint8List.fromList([

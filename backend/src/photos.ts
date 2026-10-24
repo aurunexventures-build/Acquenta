@@ -1,3 +1,4 @@
+import {assertSafeImage} from './image_safety';
 import { requireActiveAccount, requireVisiblePhoto } from './moderation';
 import { isAccountDeleted } from './account_deletion';
 import { ApiError, type JsonObject } from './records';
@@ -10,7 +11,7 @@ export function photoType(bytes: Uint8Array): string {
   throw new ApiError(400,'Choose a JPEG, PNG or WebP photo.');
 }
 interface PhotoRow { id:string;user_id:string;purpose:string;object_key:string;content_type:string; }
-export async function uploadPhoto(request:Request,env:Env,userId:string):Promise<string> {
+export async function uploadPhoto(request:Request,env:Env,userId:string,safety=assertSafeImage):Promise<string> {
   const purpose = new URL(request.url).searchParams.get('purpose');
   if (purpose !== 'portrait' && purpose !== 'connection') throw new ApiError(400,'Invalid photo purpose.');
   const reader=request.body?.getReader();
@@ -26,8 +27,11 @@ export async function uploadPhoto(request:Request,env:Env,userId:string):Promise
   const bytes=new Uint8Array(size);let offset=0;
   for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}
   const contentType=photoType(bytes);
+  const marker=new TextDecoder('latin1').decode(bytes);
+  if((contentType==='image/png'&&marker.includes('acTL'))||(contentType==='image/webp'&&marker.includes('ANIM')))throw new ApiError(400,'Choose a still photo rather than an animated image.');
   const count=await env.metcue_db.prepare('SELECT count(*) AS count FROM photos WHERE user_id=?').bind(userId).first<{count:number}>();
   if((count?.count??0)>=2000)throw new ApiError(429,'Photo storage limit reached.');
+  await safety(env,userId,bytes,contentType);
   const id=crypto.randomUUID(),key=`${userId}/${id}`;
   await env.PHOTOS.put(key,bytes,{httpMetadata:{contentType}});
   try {
@@ -46,7 +50,7 @@ export async function validatePhotoRef(env:Env,userId:string,kind:string,record:
   const row=await env.metcue_db.prepare('SELECT * FROM photos WHERE id=? AND user_id=?').bind(match[2],userId).first<PhotoRow>();
   if(!row || (kind==='card'&&row.purpose!=='portrait'))throw new ApiError(400,'This photo is unavailable for this card.');
 }
-export async function readPhoto(env:Env,id:string,headers:Record<string,string>,userId?:string):Promise<Response> {
+export async function readPhoto(env:Env,id:string,headers:Record<string,string>,userId?:string,safety=assertSafeImage):Promise<Response> {
   const row=userId
     ?await env.metcue_db.prepare('SELECT * FROM photos WHERE id=? AND user_id=?').bind(id,userId).first<PhotoRow>()
     :await env.metcue_db.prepare("SELECT * FROM photos WHERE id=? AND purpose='portrait'").bind(id).first<PhotoRow>();
@@ -60,6 +64,9 @@ export async function readPhoto(env:Env,id:string,headers:Record<string,string>,
   }
   const photo=await env.PHOTOS.get(row.object_key);
   if(!photo)throw new ApiError(404,'Photo unavailable.');
-  return new Response(photo.body,{headers:{...headers,'Content-Type':row.content_type,'Content-Length':String(photo.size),
+  if(photo.size>MAX_BYTES)throw new ApiError(413,'Photo is too large.');
+  const bytes=new Uint8Array(await new Response(photo.body).arrayBuffer());
+  await safety(env,row.user_id,bytes,row.content_type);
+  return new Response(bytes,{headers:{...headers,'Content-Type':row.content_type,'Content-Length':String(photo.size),
     'Content-Security-Policy':"default-src 'none'",'Cache-Control':'no-store'}});
 }

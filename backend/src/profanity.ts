@@ -1,0 +1,2 @@
+export const PROFANITY_PATTERN="(^|[^\\p{L}\\p{N}])(?:(?:mother[\\s._*\\-]*)?f[\\s._*\\-]*[u*@][\\s._*\\-]*c[\\s._*\\-]*k(?:s|ed|ing|er|ers)?|f\\*{1,3}k|bullshit|sh[i1]t(?:s|ty|ting)?|b[i1]tch(?:es)?|c[u*]nt(?:s)?|a(?:ss|rse)hole(?:s)?|bastard(?:s)?)(?![\\p{L}\\p{N}])";
+export function hasProfanity(text:string):boolean {return new RegExp(PROFANITY_PATTERN,'iu').test(text.normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g,''));}

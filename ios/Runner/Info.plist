@@ -31,7 +31,7 @@
 			<array>
 				<string>com.googleusercontent.apps.1084823977938-vd60fspkqnkls6be7vp8ajii3q6vaph1</string>
 			</array>
-</dict>
+		</dict>
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
@@ -64,10 +64,10 @@
 					<string>FlutterSceneDelegate</string>
 					<key>UISceneStoryboardFile</key>
 					<string>Main</string>
-</dict>
+				</dict>
 			</array>
-</dict>
-</dict>
+		</dict>
+	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
@@ -87,8 +87,15 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-
 	<key>NSContactsUsageDescription</key>
 	<string>Save a contact you choose to your phone address book.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Find the nearby iPhone you choose to exchange a card without internet.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_acquenta-card._tcp</string>
+	</array>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Find a nearby phone when you choose Send or Receive in Acquenta.</string>
 </dict>
 </plist>

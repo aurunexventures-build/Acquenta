@@ -4,7 +4,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:contact_card_builder/main.dart';
 import 'package:contact_card_builder/models/account_profile.dart';
 import 'package:contact_card_builder/models/card_link.dart';
-import 'package:contact_card_builder/models/contact_card.dart';
 import 'package:contact_card_builder/services/storage_service.dart';
 import 'package:contact_card_builder/screens/account_profile_screen.dart';
 import 'package:contact_card_builder/screens/onboarding_card_builder_screen.dart';
@@ -67,6 +66,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byType(AccountProfileScreen), findsOneWidget);
+    expect(find.text('Step 1 of 2'), findsOneWidget);
+    expect(find.text('Save and create my card'), findsNothing);
     await tester.enterText(field('First name *'), 'Sam');
     await tester.enterText(field('Last name (optional)'), 'Patel');
     await tester.tap(find.text('Save').first);
@@ -107,11 +108,6 @@ void main() {
             .text,
         'Florist',
       );
-      await tester.enterText(field('Card name *'), 'Work');
-      await tester.tap(find.byType(DropdownButtonFormField<CardCategory>));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Professional').last);
-      await tester.pumpAndSettle();
       await tester.ensureVisible(field('Full Name *'));
       await tester.enterText(field('Full Name *'), 'Card-specific name');
       await tester.tap(find.text('Next'));
@@ -169,11 +165,11 @@ void main() {
       await tester.tap(find.byTooltip('Your account'));
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
-        find.text('Add another email'),
+        find.text('Add email'),
         180,
         scrollable: find.byType(Scrollable).first,
       );
-      await tester.tap(find.text('Add another email'));
+      await tester.tap(find.text('Add email'));
       await tester.pumpAndSettle();
       final additional = find.byWidgetPredicate(
         (w) =>

@@ -16,7 +16,7 @@ import '../widgets/recall_activity.dart';
 import 'connection_detail_screen.dart';
 
 const _ink = Color(0xFF202128);
-const _purple = Color(0xFF6554C0);
+const _purple = Color(0xFF2563EB);
 const _paper = Color(0xFFF6F5F1);
 
 class SmartSearchScreen extends StatefulWidget {
@@ -132,6 +132,40 @@ class _SmartSearchScreenState extends State<SmartSearchScreen>
       service.close();
       if (mounted) setState(() => _organising = false);
     }
+  }
+
+  Future<void> _refine() async {
+    final reply = TextEditingController();
+    final value = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Narrow your search'),
+        content: TextField(
+          controller: reply,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'For example: only those who know Flutter',
+          ),
+          onSubmitted: (value) => Navigator.pop(ctx, value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, reply.text),
+            child: const Text('Search'),
+          ),
+        ],
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    reply.dispose();
+    if (!mounted || value == null || value.trim().isEmpty) return;
+    _query.text = value.trim();
+    context.read<ConnectionsProvider>().refineRecall(value);
+    setState(() {});
   }
 
   Future<void> _filters() async {
@@ -315,7 +349,7 @@ class _SmartSearchScreenState extends State<SmartSearchScreen>
       matchNote: Tooltip(
         message: summary,
         child: Material(
-          color: const Color(0xFFE8E3FA),
+          color: const Color(0xFFE6EEFF),
           borderRadius: BorderRadius.circular(10),
           child: InkWell(
             borderRadius: BorderRadius.circular(10),
@@ -365,6 +399,16 @@ class _SmartSearchScreenState extends State<SmartSearchScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (!keyboard) ...[
+                const Text(
+                  'REMEMBER THE MOMENT',
+                  style: TextStyle(
+                    color: _purple,
+                    letterSpacing: 2,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 14),
                 Row(
                   children: [
                     const Expanded(
@@ -372,9 +416,9 @@ class _SmartSearchScreenState extends State<SmartSearchScreen>
                         'Smart recall',
                         style: TextStyle(
                           color: _ink,
-                          fontSize: 20,
+                          fontSize: 22,
                           fontWeight: FontWeight.w700,
-                          letterSpacing: -.8,
+                          letterSpacing: -.6,
                         ),
                       ),
                     ),
@@ -386,7 +430,7 @@ class _SmartSearchScreenState extends State<SmartSearchScreen>
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFE9E5F2),
+                          color: const Color(0xFFE6EEFF),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
@@ -394,6 +438,8 @@ class _SmartSearchScreenState extends State<SmartSearchScreen>
                               ? 'AI recall'
                               : p.aiStatus.startsWith('AI +')
                               ? 'AI + local'
+                              : p.aiStatus.startsWith('Semantic')
+                              ? 'Semantic recall'
                               : 'Local recall',
                           style: const TextStyle(color: _purple, fontSize: 10),
                         ),
@@ -480,11 +526,11 @@ class _SmartSearchScreenState extends State<SmartSearchScreen>
                   contentPadding: const EdgeInsets.symmetric(vertical: 18),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(18),
-                    borderSide: const BorderSide(color: Color(0xFFE4DFEC)),
+                    borderSide: const BorderSide(color: Color(0xFFDEE5F0)),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(18),
-                    borderSide: const BorderSide(color: Color(0xFFE4DFEC)),
+                    borderSide: const BorderSide(color: Color(0xFFDEE5F0)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(18),
@@ -492,10 +538,35 @@ class _SmartSearchScreenState extends State<SmartSearchScreen>
                   ),
                 ),
               ),
+              if (p.searchQuery.trim().isNotEmpty)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: busy ? null : _refine,
+                    icon: const Icon(Icons.chat_bubble_outline, size: 16),
+                    label: const Text('Refine this search'),
+                  ),
+                ),
+              if (p.recallContext.isNotEmpty)
+                Text(
+                  'Following: ${p.recallContext.join(' → ')}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _purple, fontSize: 11),
+                ),
+              if (p.recallInterpretation?.isNotEmpty ?? false)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Text(
+                    p.recallInterpretation!,
+                    style: const TextStyle(color: _purple, fontSize: 12),
+                  ),
+                ),
               const SizedBox(height: 8),
               VoiceMagicBar(
                 controller: _query,
                 onMagic: _organiseQuery,
+                autoOrganise: false,
                 busy: _organising,
                 onChanged: _search,
                 compact: true,
@@ -537,15 +608,10 @@ class _SmartSearchScreenState extends State<SmartSearchScreen>
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: _ink,
-                  fontSize: 20,
+                  fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  letterSpacing: -.4,
+                  letterSpacing: 0,
                 ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Tell me what you remember.',
-                style: TextStyle(color: Color(0xFF9D93AC), fontSize: 12),
               ),
             ],
           );
@@ -721,54 +787,67 @@ class _SmartSearchScreenState extends State<SmartSearchScreen>
               ],
             ],
           );
-          return Padding(
-            padding: EdgeInsets.all(wide ? 28 : 18),
-            child: Column(
-              children: [
-                input,
-                const SizedBox(height: 12),
-                Expanded(
-                  child: !active
-                      ? SingleChildScrollView(
-                          child: Column(
-                            children: [
-                              if (!keyboard) idle(),
-                              if (busy)
-                                const Padding(
-                                  padding: EdgeInsets.all(24),
-                                  child: Text(
-                                    'Following your memory…',
-                                    style: TextStyle(
-                                      color: _purple,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        )
-                      : SingleChildScrollView(
-                          keyboardDismissBehavior:
-                              ScrollViewKeyboardDismissBehavior.onDrag,
-                          child: Center(
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 1200),
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1312),
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  wide ? 36 : 20,
+                  16,
+                  wide ? 36 : 20,
+                  16,
+                ),
+                child: Column(
+                  children: [
+                    input,
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: !active
+                          ? SingleChildScrollView(
                               child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  if (_showThinking && !keyboard) ...[
-                                    const SizedBox(height: 6),
-                                    thinkingPanels(),
-                                    const SizedBox(height: 12),
-                                  ],
-                                  matches,
+                                  if (!keyboard) idle(),
+                                  if (busy)
+                                    const Padding(
+                                      padding: EdgeInsets.all(24),
+                                      child: Text(
+                                        'Following your memory…',
+                                        style: TextStyle(
+                                          color: _purple,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
                                 ],
                               ),
+                            )
+                          : SingleChildScrollView(
+                              keyboardDismissBehavior:
+                                  ScrollViewKeyboardDismissBehavior.onDrag,
+                              child: Center(
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 1200,
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      if (_showThinking && !keyboard) ...[
+                                        const SizedBox(height: 6),
+                                        thinkingPanels(),
+                                        const SizedBox(height: 12),
+                                      ],
+                                      matches,
+                                    ],
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           );
         },

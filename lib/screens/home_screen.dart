@@ -1,3 +1,14 @@
+import '../services/connection_insights.dart';
+import '../widgets/customize_card_dialog.dart';
+import '../widgets/thinking_recall_icon.dart';
+import '../widgets/acquenta_bot_icon.dart';
+import '../widgets/account_avatar.dart';
+import '../services/auth_service.dart';
+import '../services/sync_service.dart';
+import '../widgets/voice_people_search_field.dart';
+import '../widgets/people_card_pile.dart';
+import '../providers/account_profile_provider.dart';
+import '../widgets/delete_card_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/contact_card.dart';
@@ -6,7 +17,7 @@ import '../providers/cards_provider.dart';
 import '../providers/connections_provider.dart';
 import '../widgets/qr_share_dialog.dart';
 import '../widgets/visiting_card_deck.dart';
-import '../widgets/wallet_free_slots.dart';
+import '../widgets/wallet_card_pile.dart';
 import '../widgets/connection_memory_button.dart';
 import 'card_detail_screen.dart';
 import 'connection_detail_screen.dart';
@@ -17,7 +28,7 @@ import 'account_profile_screen.dart';
 
 const _ink = Color(0xFF202128);
 const _paper = Color(0xFFF6F5F1);
-const _purple = Color(0xFF6554C0);
+const _purple = Color(0xFF2563EB);
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -45,7 +56,42 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   String _filter = 'All';
+  String _peopleSort = 'Newest first';
   String _query = '';
+  final _peopleQuery = TextEditingController();
+  final _peopleSearchService = SyncService();
+  @override
+  void dispose() {
+    _peopleQuery.dispose();
+    _peopleSearchService.close();
+    super.dispose();
+  }
+
+  Future<Map<String, dynamic>> _peopleRequest(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    final auth = context.read<AuthService?>();
+    if (auth == null || !auth.isAuthenticated) {
+      throw StateError('Sign in to use voice search.');
+    }
+    final uid = auth.currentUser?.uid;
+    final result = await _peopleSearchService.request(path, body, auth);
+    if (!mounted || uid != auth.currentUser?.uid) {
+      throw StateError('Account changed.');
+    }
+    return result;
+  }
+
+  Future<String> _organisePeopleQuery(String text) async {
+    final result = await _peopleRequest('/api/v1/text/organise', {
+      'text': text,
+      'purpose': 'search',
+    });
+    final query = result['text'];
+    if (query is! String || query.trim().isEmpty) throw const FormatException();
+    return query.trim();
+  }
 
   void _open(Widget screen) =>
       Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
@@ -153,7 +199,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: SafeArea(
               child: Column(
                 children: [
-                  if (_tab != 2 && (wide || !keyboard)) _topbar(wide),
+                  if (wide || !keyboard) _topbar(wide),
                   Expanded(
                     child: IndexedStack(
                       index: _tab == 2 ? 1 : 0,
@@ -186,7 +232,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ? null
           : NavigationBar(
               backgroundColor: Colors.white,
-              indicatorColor: const Color(0xFFE8E3FA),
+              indicatorColor: const Color(0xFFE6EEFF),
               selectedIndex: _tab,
               onDestinationSelected: _selectTab,
               labelTextStyle: WidgetStateProperty.all(
@@ -204,8 +250,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   label: 'Connections',
                 ),
                 NavigationDestination(
-                  icon: Icon(Icons.auto_awesome_outlined, color: _ink),
-                  selectedIcon: Icon(Icons.auto_awesome, color: _purple),
+                  icon: ThinkingRecallIcon(),
+                  selectedIcon: ThinkingRecallIcon(size: 32),
                   label: 'Smart Recall',
                 ),
               ],
@@ -259,7 +305,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   const Icon(
                     Icons.qr_code_scanner_rounded,
-                    color: Color(0xFFD8F397),
+                    color: Color(0xFFE7EFFF),
                     size: 28,
                   ),
                   const SizedBox(height: 14),
@@ -277,7 +323,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: FilledButton(
                       onPressed: () => _open(const ReceiveCardScreen()),
                       style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFFD8F397),
+                        backgroundColor: const Color(0xFFE7EFFF),
                         foregroundColor: _ink,
                       ),
                       child: const Text('Scan a card'),
@@ -289,7 +335,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 22),
             const Row(
               children: [
-                Icon(Icons.circle, color: Color(0xFFD8F397), size: 6),
+                Icon(Icons.circle, color: Color(0xFFE7EFFF), size: 6),
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -317,11 +363,16 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
           child: Row(
             children: [
-              Icon(
-                icon,
-                size: 19,
-                color: _tab == index ? const Color(0xFFD8F397) : Colors.white54,
-              ),
+              if (index == 2)
+                const AcquentaBotIcon(size: 19)
+              else
+                Icon(
+                  icon,
+                  size: 19,
+                  color: _tab == index
+                      ? const Color(0xFFE7EFFF)
+                      : Colors.white54,
+                ),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -351,7 +402,7 @@ class _HomeScreenState extends State<HomeScreen> {
         width: 32,
         height: 32,
         decoration: BoxDecoration(
-          color: light ? const Color(0xFFD8F397) : _purple,
+          color: light ? const Color(0xFFE7EFFF) : _purple,
           borderRadius: BorderRadius.circular(10),
         ),
         clipBehavior: Clip.antiAlias,
@@ -375,6 +426,11 @@ class _HomeScreenState extends State<HomeScreen> {
   );
 
   Widget _topbar(bool wide) {
+    final auth = context.watch<AuthService?>();
+    final profile = context.watch<AccountProfileProvider?>()?.profile;
+    final name = profile?.fullName.trim().isNotEmpty == true
+        ? profile!.fullName
+        : (auth?.currentUser?.displayName ?? '');
     return Container(
       height: wide ? 78 : 64,
       padding: EdgeInsets.symmetric(horizontal: wide ? 36 : 20),
@@ -383,42 +439,57 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: Row(
         children: [
-          if (!wide)
-            Flexible(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: _brand(),
-              ),
-            )
-          else
-            Text(
-              [
-                'Your identity, beautifully shared.',
-                'Your people, a little closer.',
-                'A thought away.',
-              ][_tab],
-              style: const TextStyle(color: Color(0xFF777780), fontSize: 13),
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: wide
+                  ? Text(
+                      [
+                        'Your identity, beautifully shared.',
+                        'Your people, a little closer.',
+                        'A thought away.',
+                      ][_tab],
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF777780),
+                        fontSize: 13,
+                      ),
+                    )
+                  : FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: _brand(),
+                    ),
             ),
-          const Spacer(),
-          IconButton(
-            tooltip: 'Event',
-            onPressed: _event,
-            icon: const Icon(Icons.event_outlined, color: _ink, size: 21),
           ),
-          const SizedBox(width: 8),
-          IconButton(
-            tooltip: 'Your account',
-            onPressed: () => _open(const AccountProfileScreen()),
-            icon: const CircleAvatar(
-              radius: 17,
-              backgroundColor: Color(0xFFEAE5F8),
-              child: Icon(
-                Icons.person_outline_rounded,
-                color: _purple,
-                size: 19,
+          const SizedBox(width: 12),
+          Row(
+            key: const ValueKey('header-account-actions'),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip: 'Event',
+                style: IconButton.styleFrom(
+                  backgroundColor: const Color(0xFFE8EDF2),
+                  foregroundColor: _ink,
+                ),
+                onPressed: _event,
+                icon: const Icon(Icons.event_outlined, color: _ink, size: 21),
               ),
-            ),
+              const SizedBox(width: 4),
+              IconButton(
+                tooltip: 'Your account',
+                onPressed: () => _open(const AccountProfileScreen()),
+                icon: AccountAvatar(
+                  key: ValueKey(
+                    'account-avatar:${auth?.currentUser?.uid ?? 'guest'}',
+                  ),
+                  name: name,
+                  photoUrl: auth?.accountPhotoUrl ?? '',
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -439,10 +510,16 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (wide) ...[
-              _hero(cards, people, wide),
-              const SizedBox(height: 30),
-            ],
+            Text(
+              _walletTab == 0 ? 'A LITTLE MORE YOU' : 'BEYOND THE FIRST HELLO',
+              style: const TextStyle(
+                color: _purple,
+                letterSpacing: 2,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 14),
             SizedBox(
               key: const ValueKey('wallet-heading'),
               width: double.infinity,
@@ -476,12 +553,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       style: const TextStyle(color: _ink, fontSize: 11),
                     ),
                   ),
-                  IconButton(
-                    tooltip: 'Receive a card',
-                    onPressed: () => _open(const ReceiveCardScreen()),
-                    icon: const Icon(
-                      Icons.qr_code_scanner_rounded,
-                      color: _purple,
+                  Tooltip(
+                    message: 'Receive a card',
+                    child: TextButton.icon(
+                      onPressed: () => _open(const ReceiveCardScreen()),
+                      icon: const Icon(Icons.move_to_inbox_outlined, size: 19),
+                      label: const Text('Receive'),
                     ),
                   ),
                 ],
@@ -496,192 +573,64 @@ class _HomeScreenState extends State<HomeScreen> {
     ),
   );
 
-  Widget _hero(CardsProvider cards, ConnectionsProvider people, bool wide) {
-    final first = _walletTab == 0;
-    final event = cards.activeEventMode;
-
-    final heading = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          first ? 'A LITTLE MORE YOU' : 'BEYOND THE FIRST HELLO',
-          style: const TextStyle(
-            color: _purple,
-            letterSpacing: 2,
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 13),
-        Text(
-          first
-              ? 'One you.\nMany possibilities.'
-              : 'Remember the moment.\nRecall the person.',
-          style: TextStyle(
-            color: _ink,
-            fontSize: wide ? 44 : 28,
-            height: 1.08,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -1.8,
-          ),
-        ),
-        const SizedBox(height: 14),
-        Text(
-          first
-              ? 'Pick the side of you the world gets to meet.'
-              : 'A conversation, a place, a detail. Your cue to reconnect.',
-          style: const TextStyle(color: Color(0xFF777780), fontSize: 13),
-        ),
-        const SizedBox(height: 20),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            if (event != null)
-              ActionChip(
-                avatar: const Icon(
-                  Icons.event_outlined,
-                  size: 16,
-                  color: _purple,
-                ),
-                label: Text(
-                  event.eventName,
-                  style: const TextStyle(color: _ink, fontSize: 11),
-                ),
-                onPressed: _event,
-                backgroundColor: const Color(0xFFE8E3FA),
-              ),
-          ],
-        ),
-      ],
-    );
-    if (!first) return heading;
-    final visual = _HoverPanel(
-      onTap: () => _selectTab(2),
-      child: Container(
-        height: wide ? 224 : null,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: const Color(0xFFE6E0F5),
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: Stack(
-          children: [
-            Positioned(
-              right: -20,
-              top: -50,
-              child: _ring(190, Colors.white.withValues(alpha: .45)),
-            ),
-            Positioned(
-              right: 45,
-              bottom: -80,
-              child: _ring(160, Colors.white.withValues(alpha: .35)),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: .65),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Icon(
-                          Icons.auto_awesome_rounded,
-                          color: _purple,
-                          size: 23,
-                        ),
-                      ),
-                      const Spacer(),
-                      const Icon(
-                        Icons.north_east_rounded,
-                        color: _ink,
-                        size: 20,
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: wide ? 0 : 16),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Remember the person,\nnot just the name.',
-                        style: TextStyle(
-                          color: _ink,
-                          fontSize: wide ? 23 : 18,
-                          height: 1.15,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -.6,
-                        ),
-                      ),
-                      if (wide) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          'Explore smart recall',
-                          style: const TextStyle(
-                            color: Color(0xFF6D687B),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-    return wide
-        ? Row(
-            children: [
-              Expanded(flex: 6, child: heading),
-              const SizedBox(width: 30),
-              Expanded(flex: 4, child: visual),
-            ],
-          )
-        : Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [heading, const SizedBox(height: 24), visual],
-          );
-  }
-
-  Widget _ring(double size, Color color) => Container(
-    width: size,
-    height: size,
-    decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      border: Border.all(width: 28, color: color),
-    ),
-  );
-
   Widget _identityGrid(CardsProvider provider) {
-    Widget deck(List<ContactCard> cards) => VisitingCardDeck(
+    Widget deck(List<ContactCard> cards) => WalletCardPile(
+      onReorder: provider.reorderWallet,
       entries: cards
           .map(
             (card) => WalletEntry.own(
               card,
               locked: provider.isCardLocked(card.id),
+              trailing: PopupMenuButton<String>(
+                tooltip: 'Card options',
+                icon: const Icon(Icons.more_vert, color: Color(0xFFE7EFFF)),
+                color: const Color(0xFF262336),
+                onSelected: (action) {
+                  if (action == 'delete') {
+                    confirmDeleteCard(context, provider, card);
+                  } else if (provider.isCardLocked(card.id)) {
+                    _lockedCard();
+                  } else if (action == 'customize') {
+                    showDialog<void>(
+                      context: context,
+                      builder: (_) => CustomizeCardDialog(card: card),
+                    );
+                  } else {
+                    _share(card);
+                  }
+                },
+                itemBuilder: (_) => [
+                  for (final action in ['Share', 'Customize', 'Delete'])
+                    PopupMenuItem(
+                      value: action.toLowerCase(),
+                      child: Row(
+                        children: [
+                          Icon(
+                            action == 'Share'
+                                ? Icons.ios_share_rounded
+                                : action == 'Customize'
+                                ? Icons.palette_outlined
+                                : Icons.delete_outline_rounded,
+                            color: const Color(0xFFE7EFFF),
+                            size: 20,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            '$action card',
+                            style: const TextStyle(color: Color(0xFFE7EFFF)),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
               onOpen: provider.isCardLocked(card.id)
                   ? _lockedCard
                   : () => _open(CardDetailScreen(cardId: card.id)),
-              onSend: provider.isCardLocked(card.id)
-                  ? _lockedCard
-                  : () => _share(card),
             ),
           )
           .toList(),
     );
-    final primary = provider.defaultCard;
-    final others = provider.walletCards
-        .where((c) => c.id != primary?.id)
-        .toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -690,93 +639,121 @@ class _HomeScreenState extends State<HomeScreen> {
           style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: 12),
-        if (primary != null) ...[
-          const Text('Primary card'),
-          const SizedBox(height: 8),
-          deck([primary]),
-        ] else if (provider.cards.isNotEmpty) ...[
-          const Text('Choose a primary card from its details or when editing.'),
+        if (provider.walletCards.length > 1) ...[
+          Text(
+            'Drag to reorder · bottom card is primary',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
           const SizedBox(height: 12),
         ],
-        if (others.isNotEmpty) ...[
-          if (primary != null) ...[
-            const SizedBox(height: 20),
-            const Text('Other cards'),
-            const SizedBox(height: 12),
-          ],
-          deck(others),
-        ],
-        if (provider.remainingCardSlots > 0) ...[
-          const SizedBox(height: 20),
-          WalletFreeSlots(
-            used: provider.cards.length,
-            remaining: provider.remainingCardSlots,
-            onAdd: _newCard,
-          ),
-        ],
+        deck(provider.walletCards),
       ],
     );
   }
 
   Widget _peopleGrid(ConnectionsProvider provider) {
-    final people = provider.connections.where((p) {
-      final text =
-          '${p.fullName} ${p.role} ${p.eventContext.eventName} ${p.techStack.join(' ')}'
-              .toLowerCase();
-      if (!text.contains(_query.toLowerCase())) return false;
-      return switch (_filter) {
-        'Favourites' => p.isFavorite,
-        'Creators' => RegExp(
-          'creator|influencer|artist|photographer',
-        ).hasMatch(text),
-        'Tech' => RegExp('developer|architect| ai ').hasMatch(text),
-        _ => true,
-      };
-    }).toList();
+    final filters = ConnectionInsights.filters(provider.connections);
+    final activeFilter = filters.contains(_filter) ? _filter : 'All';
+    final people =
+        (_query.trim().isEmpty
+                ? provider.connections
+                : provider.searchResults.map((result) => result.connection))
+            .where((p) => ConnectionInsights.matches(p, activeFilter))
+            .toList();
+    int compareText(String a, String b) =>
+        a.toLowerCase().compareTo(b.toLowerCase());
+    if (_peopleSort != 'Best match') {
+      people.sort((a, b) {
+        final compared = switch (_peopleSort) {
+          'Oldest first' => a.savedAt.compareTo(b.savedAt),
+          'Name A–Z' => compareText(a.fullName, b.fullName),
+          'Name Z–A' => compareText(b.fullName, a.fullName),
+          'Company' => compareText(a.company, b.company),
+          'Event' => compareText(
+            a.eventContext.eventName,
+            b.eventContext.eventName,
+          ),
+          _ => b.savedAt.compareTo(a.savedAt),
+        };
+        return compared == 0 ? compareText(a.fullName, b.fullName) : compared;
+      });
+    }
     return Column(
       children: [
-        TextField(
-          style: const TextStyle(color: _ink, fontSize: 14),
-          decoration: InputDecoration(
-            hintText: 'Find a familiar face…',
-            hintStyle: const TextStyle(color: Color(0xFF8D8B95)),
-            prefixIcon: const Icon(Icons.search_rounded, color: _purple),
-            filled: true,
-            fillColor: Colors.white,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide.none,
-            ),
-          ),
-          onChanged: (value) => setState(() => _query = value),
+        VoicePeopleSearchField(
+          controller: _peopleQuery,
+          request: _peopleRequest,
+          organise: _organisePeopleQuery,
+          voiceEnabled: context.watch<AuthService?>()?.isAuthenticated ?? false,
+          onChanged: (value) {
+            provider.setSearchQuery(value);
+            setState(() => _query = value);
+          },
         ),
         const SizedBox(height: 14),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: ['All', 'Favourites', 'Creators', 'Tech']
-                .map(
-                  (f) => ChoiceChip(
-                    label: Text(f),
-                    selected: _filter == f,
-                    onSelected: (_) => setState(() => _filter = f),
-                    selectedColor: const Color(0xFFE8E3FA),
-                    backgroundColor: Colors.white,
-                    side: BorderSide.none,
-                    labelStyle: TextStyle(
-                      color: _filter == f ? _purple : const Color(0xFF777780),
-                      fontSize: 12,
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
+        Row(
+          key: const ValueKey('connections-filter-sort-row'),
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (final f in filters)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ChoiceChip(
+                          label: Text(ConnectionInsights.label(f)),
+                          selected: activeFilter == f,
+                          onSelected: (_) => setState(() => _filter = f),
+                          selectedColor: const Color(0xFFE6EEFF),
+                          backgroundColor: Colors.white,
+                          side: BorderSide.none,
+                          labelStyle: TextStyle(
+                            color: activeFilter == f
+                                ? _purple
+                                : const Color(0xFF777780),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            PopupMenuButton<String>(
+              tooltip: 'Sort connections',
+              initialValue: _peopleSort,
+              onSelected: (value) => setState(() => _peopleSort = value),
+              itemBuilder: (_) => [
+                for (final label in [
+                  'Newest first',
+                  'Oldest first',
+                  'Name A–Z',
+                  'Name Z–A',
+                  'Company',
+                  'Event',
+                  'Best match',
+                ])
+                  PopupMenuItem(value: label, child: Text(label)),
+              ],
+              child: const Chip(
+                avatar: Icon(Icons.sort_rounded, size: 17, color: _purple),
+                label: Text(
+                  'Sort',
+                  style: TextStyle(color: _purple, fontSize: 12),
+                ),
+                backgroundColor: Color(0xFFE6EEFF),
+                side: BorderSide.none,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 8),
         if (people.isNotEmpty)
-          VisitingCardDeck(
+          PeopleCardPile(
+            key: ValueKey('people-$_filter-$_query-$_peopleSort'),
             entries: people
                 .asMap()
                 .entries
@@ -814,47 +791,6 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 14),
         TextButton(onPressed: action, child: const Text('Get started')),
       ],
-    ),
-  );
-}
-
-class _HoverPanel extends StatefulWidget {
-  final Widget child;
-  final VoidCallback onTap;
-  const _HoverPanel({required this.child, required this.onTap});
-  @override
-  State<_HoverPanel> createState() => _HoverPanelState();
-}
-
-class _HoverPanelState extends State<_HoverPanel> {
-  bool hover = false;
-  @override
-  Widget build(BuildContext context) => MouseRegion(
-    cursor: SystemMouseCursors.click,
-    onEnter: (_) => setState(() => hover = true),
-    onExit: (_) => setState(() => hover = false),
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOut,
-      transform: Matrix4.translationValues(0, hover ? -4 : 0, 0),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: hover
-            ? [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: .12),
-                  blurRadius: 24,
-                  offset: const Offset(0, 10),
-                ),
-              ]
-            : [],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(24),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(onTap: widget.onTap, child: widget.child),
-      ),
     ),
   );
 }

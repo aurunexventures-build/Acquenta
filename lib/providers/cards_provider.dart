@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/text_safety.dart';
 import '../models/contact_card.dart';
 import '../models/event_context.dart';
 import '../services/storage_service.dart';
@@ -11,6 +12,7 @@ class CardsProvider extends ChangeNotifier {
   final StorageService _storageService;
 
   void Function()? onLocalChange;
+  Future<void> Function(ContactCard)? onValidateText;
   List<ContactCard> _cards = [];
   bool _isLoading = true;
   EventContext?
@@ -21,6 +23,35 @@ class CardsProvider extends ChangeNotifier {
   }
 
   List<ContactCard> get cards => _cards;
+  String get suggestedCardColour {
+    const colours = [
+      '#2563EB',
+      '#0D9488',
+      '#7C3AED',
+      '#D97706',
+      '#BE185D',
+      '#164E63',
+      '#18181B',
+    ];
+    int distance(String a, String b) {
+      final x = int.tryParse(a.replaceAll('#', ''), radix: 16) ?? 0;
+      final y = int.tryParse(b.replaceAll('#', ''), radix: 16) ?? 0;
+      var result = 0;
+      for (final shift in [0, 8, 16]) {
+        final delta = ((x >> shift) & 255) - ((y >> shift) & 255);
+        result += delta * delta;
+      }
+      return result;
+    }
+
+    for (final colour in colours) {
+      if (_cards.every((c) => distance(colour, c.themeColorHex) > 6000)) {
+        return colour;
+      }
+    }
+    return colours[_cards.length % colours.length];
+  }
+
   bool get isLoading => _isLoading;
   EventContext? get activeEventMode => _activeEventMode;
 
@@ -29,11 +60,61 @@ class CardsProvider extends ChangeNotifier {
     return _cards.where((c) => c.isDefault).firstOrNull;
   }
 
-  /// Primary is an explicit choice; remaining cards keep their saved order.
-  List<ContactCard> get walletCards => [
-    ?defaultCard,
-    ..._cards.where((c) => c.id != defaultCard?.id),
-  ];
+  /// The primary card is the front face; private ranks survive cloud merges.
+  List<ContactCard> get walletCards {
+    final positions = {for (var i = 0; i < _cards.length; i++) _cards[i].id: i};
+    final ordered = [..._cards]
+      ..sort((a, b) {
+        if (a.isDefault != b.isDefault) return a.isDefault ? -1 : 1;
+        final rank = (a.walletOrder ?? positions[a.id]!).compareTo(
+          b.walletOrder ?? positions[b.id]!,
+        );
+        return rank != 0 ? rank : positions[a.id]!.compareTo(positions[b.id]!);
+      });
+    return ordered;
+  }
+
+  Future<void> reorderWallet(List<String> ids) async {
+    final current = walletCards;
+    if (ids.length != current.length ||
+        ids.toSet().length != ids.length ||
+        !ids.toSet().containsAll(current.map((c) => c.id))) {
+      throw ArgumentError('Reordering must include each card exactly once.');
+    }
+    // Reordering cannot bypass the free-plan lock or move locked cards into active slots.
+    final active = current.take(freeCardLimit).map((c) => c.id).toSet();
+    if (!active.containsAll(ids.take(freeCardLimit)) ||
+        ids.skip(freeCardLimit).join('|') !=
+            current.skip(freeCardLimit).map((c) => c.id).join('|')) {
+      throw StateError('Only active cards can be reordered.');
+    }
+    if (ids.isEmpty) return;
+    final byId = {for (final card in current) card.id: card};
+    final reordered = <ContactCard>[];
+    for (var i = 0; i < ids.length; i++) {
+      final card = byId[ids[i]]!;
+      final primary = i == 0;
+      reordered.add(
+        card.walletOrder == i && card.isDefault == primary
+            ? card
+            : card.copyWith(
+                walletOrder: i,
+                isDefault: primary,
+                updatedAt: _storageService.versionFor(
+                  'card',
+                  card.id,
+                  card.updatedAt,
+                ),
+              ),
+      );
+    }
+    final scope = _storageService.scope;
+    await _storageService.saveCards(reordered);
+    if (scope != _storageService.scope) return;
+    _cards = reordered;
+    onLocalChange?.call();
+    notifyListeners();
+  }
 
   bool isCardLocked(String id) {
     final index = walletCards.indexWhere((card) => card.id == id);
@@ -97,6 +178,10 @@ class CardsProvider extends ChangeNotifier {
   }
 
   Future<void> addCard(ContactCard card) async {
+    TextSafety.validateFields(card.toJson());
+    final scope = _storageService.scope;
+    await onValidateText?.call(card);
+    if (scope != _storageService.scope) throw StateError('Account changed.');
     if (!canCreateCard) {
       throw StateError(
         'The free plan includes five cards. Edit or remove a card to add another.',
@@ -122,6 +207,10 @@ class CardsProvider extends ChangeNotifier {
   }
 
   Future<void> updateCard(ContactCard updatedCard) async {
+    TextSafety.validateFields(updatedCard.toJson());
+    final scope = _storageService.scope;
+    await onValidateText?.call(updatedCard);
+    if (scope != _storageService.scope) throw StateError('Account changed.');
     if (isCardLocked(updatedCard.id)) {
       throw StateError(
         'Free accounts can use up to five cards. Remove a card to unlock this one.',

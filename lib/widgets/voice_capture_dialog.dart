@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -14,12 +15,15 @@ class VoiceCaptureDialog extends StatefulWidget {
   final String? activeEventName;
   final SavedConnection? connection;
   final SyncService? service;
+  final bool guided, editOnly;
   final FutureOr<void> Function(SavedConnection connection) onCaptured;
   const VoiceCaptureDialog({
     super.key,
     this.activeEventName,
     this.connection,
     this.service,
+    this.guided = false,
+    this.editOnly = false,
     required this.onCaptured,
   });
   @override
@@ -29,6 +33,11 @@ class VoiceCaptureDialog extends StatefulWidget {
 class _VoiceCaptureDialogState extends State<VoiceCaptureDialog> {
   late final SyncService _service;
   final _raw = TextEditingController();
+  final _answer = TextEditingController();
+  final _turns = <Map<String, String>>[];
+  String _question = '';
+  String _normalise(String value) =>
+      value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9 ]'), '').trim();
   final Map<String, TextEditingController> _fields = {};
   bool _busy = false, _saving = false, _review = false;
   String _status = '', _photo = '';
@@ -69,6 +78,7 @@ class _VoiceCaptureDialogState extends State<VoiceCaptureDialog> {
     }
     _raw.text = c?.rawCue ?? '';
     _photo = c?.avatarUrl ?? '';
+    _review = widget.editOnly;
   }
 
   String _value(String key) => _fields[key]!.text.trim();
@@ -81,8 +91,11 @@ class _VoiceCaptureDialogState extends State<VoiceCaptureDialog> {
       .toList();
   void _rawChanged(String value) {
     setState(() {
-      _review = false;
-      _fields['summary']!.clear();
+      if (!widget.editOnly) {
+        _review = false;
+        _turns.clear();
+        _question = '';
+      }
       _status = '';
     });
   }
@@ -107,11 +120,23 @@ class _VoiceCaptureDialogState extends State<VoiceCaptureDialog> {
       _status = '';
     });
     try {
+      final contextNote = widget.guided && widget.connection != null
+          ? jsonEncode({
+              'person': {
+                'name': widget.connection!.fullName,
+                'role': widget.connection!.role,
+                'company': widget.connection!.company,
+                'skills': widget.connection!.techStack,
+              },
+              'memory': raw,
+            })
+          : raw;
       final data = await _service.generateCues(
-        raw,
+        contextNote.length <= 6000 ? contextNote : raw,
         _value('eventName'),
         auth,
-        askFollowUp: false,
+        conversation: _turns,
+        askFollowUp: widget.guided,
       );
       if (!mounted ||
           generation != _request ||
@@ -123,8 +148,7 @@ class _VoiceCaptureDialogState extends State<VoiceCaptureDialog> {
       setState(() {
         for (final key in _fields.keys) {
           if (widget.connection != null &&
-              ['fullName', 'role', 'company'].contains(key) &&
-              _value(key).isNotEmpty) {
+              ['fullName', 'role', 'company', 'skills'].contains(key)) {
             continue;
           }
           final value = cues[key];
@@ -136,7 +160,18 @@ class _VoiceCaptureDialogState extends State<VoiceCaptureDialog> {
           if (rendered.isNotEmpty) _fields[key]!.text = rendered;
         }
         _review = true;
-        _status = 'Ready to review. Your original words are kept.';
+        final question = cues['followUpQuestion'] as String? ?? '';
+        _question =
+            widget.guided &&
+                _turns.length < 3 &&
+                !_turns.any(
+                  (turn) =>
+                      _normalise(turn['question'] ?? '') ==
+                      _normalise(question),
+                )
+            ? question.trim()
+            : '';
+        _status = _question.isEmpty ? 'Your notes are ready to review.' : '';
       });
     } catch (_) {
       if (mounted) {
@@ -148,6 +183,19 @@ class _VoiceCaptureDialogState extends State<VoiceCaptureDialog> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _reply() async {
+    final answer = _answer.text.trim();
+    if (_busy || answer.isEmpty || _question.isEmpty || _turns.length >= 3) {
+      return;
+    }
+    setState(() {
+      _turns.add({'question': _question, 'answer': answer});
+      _question = '';
+      _answer.clear();
+    });
+    await _generate();
   }
 
   Future<void> _save() async {
@@ -164,7 +212,9 @@ class _VoiceCaptureDialogState extends State<VoiceCaptureDialog> {
       setState(() => _status = 'Add at least one cue for your future self.');
       return;
     }
-    final turns = widget.connection?.cueConversation ?? <Map<String, String>>[];
+    final turns = _turns.isNotEmpty
+        ? _turns
+        : widget.connection?.cueConversation ?? <Map<String, String>>[];
     final now = DateTime.now(), original = widget.connection;
     final event =
         (original?.eventContext ?? EventContext(eventName: '', date: now))
@@ -194,7 +244,7 @@ class _VoiceCaptureDialogState extends State<VoiceCaptureDialog> {
       cueConversation: turns,
       avatarUrl: _photo,
       eventContext: event,
-      techStack: _tags('skills'),
+      techStack: original?.techStack ?? _tags('skills'),
       distinctiveMemory: _value('distinctiveMemory'),
       microContext: _value('microContext'),
       futureSelfNote: _value('futureSelfNote'),
@@ -222,6 +272,7 @@ class _VoiceCaptureDialogState extends State<VoiceCaptureDialog> {
     _request++;
     if (widget.service == null) _service.close();
     _raw.dispose();
+    _answer.dispose();
     for (final controller in _fields.values) {
       controller.dispose();
     }
@@ -261,10 +312,17 @@ class _VoiceCaptureDialogState extends State<VoiceCaptureDialog> {
           children: [
             Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Add a memory',
-                    style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+                    widget.editOnly
+                        ? 'Edit your notes'
+                        : widget.guided
+                        ? 'Talk to Acquenta AI'
+                        : 'Add a memory',
+                    style: const TextStyle(
+                      fontSize: 21,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
                 IconButton(
@@ -282,6 +340,20 @@ class _VoiceCaptureDialogState extends State<VoiceCaptureDialog> {
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
             const SizedBox(height: 12),
+            if (widget.guided)
+              Container(
+                padding: const EdgeInsets.all(14),
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: .07),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Text(
+                  'What would you like to remember about ${widget.connection?.fullName ?? 'this person'}? Tell me about your conversation.',
+                ),
+              ),
             TextField(
               controller: _raw,
               onChanged: _rawChanged,
@@ -295,32 +367,107 @@ class _VoiceCaptureDialogState extends State<VoiceCaptureDialog> {
                 border: OutlineInputBorder(),
               ),
             ),
-            VoiceMagicBar(
-              controller: _raw,
-              onMagic: _generate,
-              onChanged: _rawChanged,
-              busy: _busy || _saving,
-            ),
+            if (!widget.editOnly)
+              VoiceMagicBar(
+                merged: widget.guided,
+                controller: _raw,
+                onMagic: _generate,
+                onChanged: _rawChanged,
+                busy: _busy || _saving,
+              ),
+            if (widget.guided && !_review)
+              TextButton.icon(
+                onPressed: _busy || _saving ? null : _generate,
+                icon: const Icon(Icons.arrow_forward),
+                label: const Text('Continue'),
+              ),
+            if (widget.guided) ...[
+              for (final turn in _turns) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      turn['question'] ?? '',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: .07),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(turn['answer'] ?? ''),
+                ),
+              ],
+              if (_question.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Text(
+                  _question,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _answer,
+                  enabled: !_busy && !_saving,
+                  minLines: 1,
+                  maxLines: 3,
+                  maxLength: 2000,
+                  decoration: const InputDecoration(
+                    labelText: 'Your reply',
+                    hintText: 'Speak or type your answer',
+                  ),
+                ),
+                VoiceMagicBar(
+                  controller: _answer,
+                  onMagic: _reply,
+                  busy: _busy || _saving,
+                  merged: true,
+                  magicLabel: 'Send reply',
+                ),
+                TextButton.icon(
+                  onPressed: _busy || _saving ? null : _reply,
+                  icon: const Icon(Icons.send_outlined),
+                  label: const Text('Send reply'),
+                ),
+                TextButton(
+                  onPressed: () => setState(() => _question = ''),
+                  child: const Text('Skip · review notes'),
+                ),
+              ],
+            ],
             if (_status.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Text(_status),
               ),
-            if (_review) ...[
+            if (_review && (!widget.guided || _question.isEmpty)) ...[
               const SizedBox(height: 12),
               _field('summary'),
               ExpansionTile(
                 title: const Text('More details'),
                 children: [
                   for (final key in _labels.keys.where(
-                    (key) => key != 'summary',
+                    (key) =>
+                        key != 'summary' &&
+                        (widget.connection == null ||
+                            ![
+                              'fullName',
+                              'role',
+                              'company',
+                              'skills',
+                            ].contains(key)),
                   ))
                     _field(key),
                 ],
               ),
             ],
             ExpansionTile(
-              title: const Text('Add a photo or event'),
+              title: const Text('Photo & event'),
               children: [
                 PhotoPickerTile(
                   photo: _photo,
@@ -331,10 +478,11 @@ class _VoiceCaptureDialogState extends State<VoiceCaptureDialog> {
               ],
             ),
             const SizedBox(height: 12),
-            FilledButton(
-              onPressed: _busy || _saving ? null : _save,
-              child: Text(_saving ? 'Saving…' : 'Save'),
-            ),
+            if (!widget.guided || _question.isEmpty)
+              FilledButton(
+                onPressed: _busy || _saving ? null : _save,
+                child: Text(_saving ? 'Saving…' : 'Save'),
+              ),
           ],
         ),
       ),

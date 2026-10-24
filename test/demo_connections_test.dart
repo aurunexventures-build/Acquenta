@@ -25,7 +25,7 @@ void main() {
       await storage.addDemoIdentityCardsOnce();
       var cards = await storage.loadCards();
       expect(cards, hasLength(5));
-      expect(cards.every((c) => c.title == 'AuruNex Ventures'), isTrue);
+      expect(cards.every((c) => !c.toJson().containsKey('title')), isTrue);
       expect(cards.where((c) => c.isDefault), hasLength(1));
       expect(
         cards.map((c) => c.role),

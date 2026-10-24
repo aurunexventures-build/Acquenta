@@ -42,6 +42,8 @@ class VCardService {
       'FN:${escape(card.fullName)}',
       'N:;${escape(card.fullName)};;;',
       'X-METCUE-ID:${escape(card.id)}',
+      'X-ACQUENTA-FINISH:${escape(card.cardFinish)}',
+      'X-ACQUENTA-COLOR:${escape(card.themeColorHex)}',
       if (PhotoService.portraitUrl(card.avatarUrl) != null) ...[
         'PHOTO;VALUE=URI:${PhotoService.portraitUrl(card.avatarUrl)}',
         'X-METCUE-PORTRAIT:${card.avatarUrl.substring(9)}',
@@ -83,6 +85,10 @@ class VCardService {
               ? connection.avatarUrl
               : '',
           title: connection.role,
+          cardFinish: connection.cardFinish,
+          themeColorHex: connection.themeColorHex.isEmpty
+              ? '#343B49'
+              : connection.themeColorHex,
           fullName: connection.fullName,
           role: connection.role,
           company: connection.company,

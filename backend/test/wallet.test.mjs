@@ -14,6 +14,9 @@ function fixture() {
   db.exec(readFileSync('migrations/0004_admin_moderation.sql','utf8'));
   db.exec(readFileSync('migrations/0005_account_profiles.sql','utf8'));
   db.exec(readFileSync('migrations/0006_deleted_identity_guard.sql','utf8'));
+  db.exec(readFileSync('migrations/0008_ai_model_usage.sql','utf8'));
+  db.exec(readFileSync('migrations/0009_image_safety.sql','utf8'));
+  db.exec(readFileSync('migrations/0010_text_safety.sql','utf8'));
   const blobs=new Map();
   const vectors=new Map();let failAi=false,lastEmbedding='';
   const env={
@@ -33,7 +36,7 @@ function fixture() {
     VECTORIZE:{async upsert(items){for(const item of items)vectors.set(item.id,item);},async deleteByIds(ids){for(const id of ids)vectors.delete(id);},
       async query(_,options){return {matches:[...vectors.values()].filter(v=>v.namespace===options.namespace).map(v=>({id:v.id,score:0.88}))};}},
   };
-  const handler=createHandler(async req=>{const user=req.headers.get('Authorization');if(!user)throw new Error('unauthenticated');return user;},{validateRecent(){},async deleteIdentity(){}});
+  const handler=createHandler(async req=>{const user=req.headers.get('Authorization');if(!user)throw new Error('unauthenticated');return user;},{validateRecent(){},async deleteIdentity(){}},async()=>{},async()=>{});
   async function call(path,body,user='alice',method='POST') {
     const req=new Request(`https://metcue.test${path}`,{method,headers:{...(user?{'Authorization':user}:{}),'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});
     return handler.fetch(req,env);
@@ -51,7 +54,7 @@ const sync=(connections=[],extra={})=>({protocol:2,connections,cards:[],deleted:
 test('all memory fields, links, own cards and reciprocal downloads roundtrip',async()=>{
   const f=fixture();const c=connection();
   let r=await f.call('/api/v1/sync',sync([c],{cards:[card()]}));assert.equal(r.status,200);
-  let data=await r.json();assert.deepEqual(data.connections[0],c);assert.equal(data.cards[0].title,'Creative');
+  let data=await r.json();assert.deepEqual(data.connections[0],c);assert.equal(data.cards[0].title,undefined);
   assert.match(f.lastEmbedding,/Yellow bag/);assert.match(f.lastEmbedding,/Packaging launch/);assert.match(f.lastEmbedding,/London/);
   r=await f.call('/api/v1/sync',sync());data=await r.json();assert.deepEqual(data.connections[0],c);
 });
@@ -89,7 +92,7 @@ test('public cards require explicit publication, escape HTML, support reciprocal
   const page=await f.call(`/c/${token}?event=%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E`,undefined,null,'GET');
   const html=await page.text();assert.ok(!html.includes('<script>'));assert.ok(html.includes('&lt;script&gt;'));assert.ok(!html.includes('<img'));
   const request=new Request('https://metcue.test/api/v1/reciprocal',{method:'POST',body:new URLSearchParams({token,name:'Priya',contact:'https://linkedin.com/in/priya',note:'Packaging',event:'Design Night'})});
-  const handler=createHandler(async()=>{throw new Error('should be public');});assert.equal((await handler.fetch(request,f.env)).status,200);
+  const handler=createHandler(async()=>{throw new Error('should be public');},undefined,undefined,async()=>{});assert.equal((await handler.fetch(request,f.env)).status,200);
   const wallet=await (await f.call('/api/v1/sync',sync())).json();assert.equal(wallet.connections[0].links[0].url,'https://linkedin.com/in/priya');assert.equal(wallet.connections[0].email,'');
   assert.equal((await f.call('/api/v1/cards/publish',{id:'my-card'},'bob','DELETE')).status,200);
   assert.equal((await f.call(`/api/v1/cards/shared/${token}`,undefined,null,'GET')).status,200);
@@ -154,7 +157,7 @@ test('guided AI receives answers, preserves the original and stops after three f
 const jpeg=new Uint8Array([255,216,255,224,0,16,74,70,73,70]);
 async function upload(f,purpose,user='alice',bytes=jpeg){
   const request=new Request(`https://metcue.test/api/v1/photos?purpose=${purpose}`,{method:'POST',headers:{Authorization:user,'Content-Type':'image/jpeg'},body:bytes});
-  return createHandler(async req=>{const uid=req.headers.get('Authorization');if(!uid)throw new Error();return uid;}).fetch(request,f.env);
+  return createHandler(async req=>{const uid=req.headers.get('Authorization');if(!uid)throw new Error();return uid;},undefined,async()=>{},async()=>{}).fetch(request,f.env);
 }
 test('private R2 photos are owner-only and never exposed as public portraits',async()=>{
   const f=fixture();const response=await upload(f,'connection');assert.equal(response.status,200);
@@ -395,4 +398,322 @@ test('private About Me profile syncs independently of cards, rejects invalid ema
  assert.equal(f.db.prepare("SELECT COUNT(*) n FROM wallet_records WHERE user_id='alice'").get().n,0);
  assert.equal(f.db.prepare("SELECT COUNT(*) n FROM account_profiles WHERE user_id='alice'").get().n,0);
  assert.equal((await f.call('/api/v1/profile',undefined,'alice','GET')).status,410);
+});
+
+
+test('card conversation cleans full identity, asks skills and audience before returning a card', async () => {
+  const f=fixture(); let sent;
+  const extracted={cardName:'Creative card',purpose:'Professional',fullName:'Amit Singh',role:'Senior IT Architect',pitch:'I help teams integrate enterprise systems.',specialties:'System integration',audience:'Engineering teams',skills:['System integration'],clarifyField:null,clarification:null};
+  f.env.AI.run=async(_,input)=>{sent=JSON.parse(input.messages[1].content);return {response:extracted};};
+  const conversation=[{field:0,answer:'You can call it as a creative card. Show it as Amit Singh, a senior IT architect.'}];
+  const request=()=>f.call('/api/v1/profile/draft',{mode:'conversation',conversation:JSON.stringify(conversation),privateNotes:'must not be sent'});
+  let result=await (await request()).json();
+  assert.equal(result.answers[0],'Creative card');assert.equal(result.answers[2],'Amit Singh');
+  assert.equal(result.next,5);assert.equal(result.card,null);
+  assert.deepEqual(Object.keys(sent),['conversation']);
+  conversation.push({field:5,answer:'My specialty is system integration.'});
+  result=await (await request()).json();assert.equal(result.next,6);assert.equal(result.card,null);
+  conversation.push({field:6,answer:'Engineering teams.'});
+  result=await (await request()).json();assert.equal(result.next,-1);assert.equal(result.card.role,'Senior IT Architect');assert.deepEqual(result.card.skills,['System integration']);
+  assert.equal((await f.call('/api/v1/profile/draft',{mode:'conversation',conversation:'not JSON'})).status,400);
+  assert.equal((await f.call('/api/v1/profile/draft',{mode:'conversation',conversation:JSON.stringify(conversation)},null)).status,401);
+});
+
+test('ambiguous speech asks clarification and malformed AI never becomes a card', async () => {
+  const f=fixture();
+  f.env.AI.run=async()=>({response:{cardName:'Creative',purpose:'Work',fullName:'Ani Singh',role:'Senior IT Architect for massages',pitch:null,specialties:null,audience:null,skills:[],clarifyField:'role',clarification:'What did you mean by for massages?'}});
+  const body={mode:'conversation',conversation:JSON.stringify([{field:3,answer:'A senior IT architect for massages'}])};
+  let result=await (await f.call('/api/v1/profile/draft',body)).json();
+  assert.equal(result.answers[3],null);assert.equal(result.next,3);assert.match(result.question,/massages/);assert.equal(result.card,null);
+  f.env.AI.run=async()=>({response:'broken'});
+  assert.equal((await f.call('/api/v1/profile/draft',body)).status,503);
+});
+
+
+test('literal null model sentinels never become spoken questions or card names', async () => {
+  const f=fixture();
+  f.env.AI.run=async()=>({response:{cardName:'Creative',purpose:'Professional',fullName:'null',role:'null',pitch:'null',specialties:'null',audience:'null',skills:[],clarifyField:'fullName',clarification:'null'}});
+  const r=await f.call('/api/v1/profile/draft',{mode:'conversation',conversation:JSON.stringify([{field:0,answer:'Call it Creative, for work'}])});
+  const result=await r.json();assert.equal(result.next,2);assert.equal(result.answers[2],null);assert.equal(result.question,'What name should appear on this card?');
+});
+
+
+test('cleaned specialties survive when a small model omits its skill array', async () => {
+  const f=fixture();f.env.AI.run=async()=>({response:{cardName:'Creative',purpose:'Work',fullName:'Amit Singh',role:'IT Architect',pitch:'I help teams integrate systems.',specialties:'Enterprise architecture, System integration',audience:'Engineering teams',skills:[],clarifyField:null,clarification:null}});
+  const r=await f.call('/api/v1/profile/draft',{mode:'conversation',conversation:JSON.stringify([{field:0,answer:'Call it Creative'},{field:5,answer:'My skills are enterprise architecture and system integration'},{field:6,answer:'Engineering teams'}])});
+  const result=await r.json();assert.equal(result.next,-1);assert.deepEqual(result.card.skills,['Enterprise architecture','System integration']);
+});
+
+
+test('confirmed profile names retain exact spelling; later card-specific names remain independent', async () => {
+  const f=fixture();let sent;
+  f.env.AI.run=async(_,input)=>{sent=JSON.parse(input.messages[1].content);return {response:{cardName:'Creative',purpose:'Work',fullName:'Amit Singh',role:'Architect',pitch:'I help teams connect systems.',specialties:null,audience:null,skills:[],clarifyField:'fullName',clarification:'Please spell your name'}};};
+  const conversation=[{field:2,answer:'Yes, use this name',profileNameConfirmed:true},{field:0,answer:'Call it Creative, for work'}];
+  const body={mode:'conversation',profileName:'Ánīt Singh',conversation:JSON.stringify(conversation)};
+  let result=await (await f.call('/api/v1/profile/draft',body)).json();
+  assert.equal(result.answers[2],'Ánīt Singh');assert.notEqual(result.next,2);assert.equal(sent.confirmedProfileName,'Ánīt Singh');
+  conversation.push({field:2,answer:'Show Amit Singh on this card instead'});body.conversation=JSON.stringify(conversation);
+  result=await (await f.call('/api/v1/profile/draft',body)).json();
+  assert.equal(sent.confirmedProfileName,undefined);assert.equal(result.next,2); // It may clarify the alternative; never force the old name back.
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS count FROM account_profiles').get().count,0);
+});
+
+
+test('final copyediting corrects grammar without changing the confirmed name or skills', async () => {
+  const f=fixture();let calls=0;
+  f.env.AI.run=async(_,input)=>{
+    calls++;
+    if(calls===2){assert.equal(JSON.parse(input.messages[1].content).pitch,'I helps teams connects there systems.');return {response:{pitch:'I help teams connect their systems.',bio:'I work with engineering teams on system integration.'}};}
+    return {response:{cardName:'Creative',purpose:'Work',fullName:'Wrong spelling',role:'Architect',pitch:'I helps teams connects there systems.',specialties:'System integration',audience:'Engineering teams',skills:['System integration'],clarifyField:null,clarification:null}};
+  };
+  const r=await f.call('/api/v1/profile/draft',{mode:'conversation',profileName:'Ánīt Singh',conversation:JSON.stringify([{field:2,answer:'Yes',profileNameConfirmed:true},{field:5,answer:'System integration'},{field:6,answer:'Engineering teams'}])});
+  const result=await r.json();assert.equal(calls,2);assert.equal(result.card.fullName,'Ánīt Singh');assert.equal(result.card.pitch,'I help teams connect their systems.');assert.equal(result.card.bio,'I work with engineering teams on system integration.');assert.deepEqual(result.card.skills,['System integration']);
+});
+
+
+test('legacy spoken confirmation reuses only the signed-in owners profile', async () => {
+  const f=fixture();
+  f.db.prepare('INSERT INTO account_profiles(user_id,payload,version) VALUES(?,?,?)').run('alice',JSON.stringify({firstName:'Anit @',lastName:'AuruNex Ventures'}),1);
+  f.env.AI.run=async()=>({response:{cardName:'Work',purpose:'Professional',fullName:'Yes you can use the same name',role:null,pitch:null,specialties:null,audience:null,skills:[],clarifyField:null,clarification:null}});
+  const body={mode:'conversation',conversation:JSON.stringify([{field:2,answer:'Yes, you can use the same name'}])};
+  let result=await (await f.call('/api/v1/profile/draft',body)).json();
+  assert.equal(result.answers[2],'Anit @ AuruNex Ventures');assert.notEqual(result.next,2);
+  result=await (await f.call('/api/v1/profile/draft',body,'bob')).json();
+  assert.equal(result.answers[2],null);assert.equal(result.next,2);
+});
+
+
+test('brief conversation reuses identity and drafts a title without asking administrative questions', async()=>{
+ const f=fixture();let calls=0;
+ f.env.AI.run=async()=>({response:JSON.stringify(++calls===1?{
+ cardName:null,purpose:null,fullName:null,role:'Florist',pitch:'I create wedding flowers.',specialties:'Floral design',audience:'Couples planning weddings',skills:['Floral design'],clarifyField:null,clarification:null
+ }:{pitch:'I create wedding flowers.',bio:'I create wedding flowers for couples planning their celebrations.'})});
+ const result=await (await f.call('/api/v1/profile/draft',{mode:'conversation',conversationStyle:'brief',profileName:'Sam',conversation:JSON.stringify([{field:4,answer:'I am a florist. I create wedding flowers for couples. My skill is floral design.'}])})).json();
+ assert.equal(result.next,-1);assert.equal(result.card.fullName,'Sam');assert.equal(result.card.cardName,'Florist card');
+ assert.deepEqual(result.card.skills,['Floral design']);
+});
+test('brief conversation asks for skills only when not supplied',async()=>{
+ const f=fixture();f.env.AI.run=async()=>({response:JSON.stringify({cardName:null,purpose:null,fullName:null,role:'Florist',pitch:'I create wedding flowers.',specialties:null,audience:'Couples',skills:[],clarifyField:null,clarification:null})});
+ const data=await (await f.call('/api/v1/profile/draft',{mode:'conversation',conversationStyle:'brief',profileName:'Sam',conversation:JSON.stringify([{field:4,answer:'I create wedding flowers for couples.'}])})).json();
+ assert.equal(data.next,5);assert.equal(data.question,'What skills or specialties would you like to highlight?');assert.equal(data.card,null);
+});
+test('speech endpoints require authentication, reject excessive text, and preserve private recordings',async()=>{
+ const f=fixture();f.env.GROQ_API_KEY='test-key';
+ assert.equal((await f.call('/api/v1/speech/speak',{text:'Hello'},null)).status,401);
+ assert.equal((await f.call('/api/v1/speech/speak',{text:'a'.repeat(201)})).status,400);
+ assert.equal((await f.call('/api/v1/speech/transcribe',{audio:'not base64'})).status,400);
+ const original=globalThis.fetch;
+ try {
+ globalThis.fetch=async(url,options)=>{
+  assert.equal(options.headers.Authorization,'Bearer test-key');
+  if(url.endsWith('/speech')) {
+   const body=JSON.parse(options.body);assert.equal(body.voice,'troy');assert.equal(body.model,'canopylabs/orpheus-v1-english');
+   return new Response(new Uint8Array([82,73,70,70,0,0,0,0,87,65,86,69]));
+  }
+  assert.equal(options.body.get('model'),'whisper-large-v3');assert.equal(options.body.has('language'),false);
+  return Response.json({text:'I am an architect in Bengaluru.'});
+ };
+ const audio=await (await f.call('/api/v1/speech/speak',{text:'Hello'})).json();assert.equal(audio.mimeType,'audio/wav');
+ const transcript=await (await f.call('/api/v1/speech/transcribe',{audio:btoa('test recording bytes')})).json();
+ assert.equal(transcript.text,'I am an architect in Bengaluru.');assert.equal(f.blobs.size,0);
+ const usage=f.db.prepare('SELECT model,calls,succeeded,characters FROM ai_model_usage ORDER BY model').all();assert.equal(usage.length,2);assert.equal(usage.find(row=>row.model==='whisper-large-v3').calls,1);assert.equal(usage.find(row=>row.model==='canopylabs/orpheus-v1-english').characters,5);assert.ok(usage.every(row=>row.succeeded===1));
+ } finally {globalThis.fetch=original;}
+});
+
+
+test('spoken employer is returned on the card instead of a saved profile employer',async()=>{
+ const f=fixture();await f.call('/api/v1/profile',{profile:{firstName:'Anit',company:'Zorro Expenses',emails:[],links:[],updatedAt:at}});
+ let calls=0;f.env.AI.run=async()=>({response:JSON.stringify(++calls===1?{
+ cardName:'Architecture',purpose:'professional',fullName:'Anit',role:'IT Architect',company:'Forest Mazars',pitch:'I integrate enterprise systems.',specialties:'System integration',audience:'Engineering teams',skills:['System integration'],clarifyField:null,clarification:null
+ }:{pitch:'I integrate enterprise systems.',bio:'I work as an IT architect at Forest Mazars.'})});
+ const result=await (await f.call('/api/v1/profile/draft',{mode:'conversation',conversationStyle:'brief',profileName:'Anit',conversation:JSON.stringify([{field:4,answer:'I am an IT architect at Forest Mazars, specialising in system integration for engineering teams.'}])})).json();
+ assert.equal(result.card.company,'Forest Mazars');
+ const profile=await (await f.call('/api/v1/profile',undefined,'alice','GET')).json();
+ assert.equal(profile.profile.company,'Zorro Expenses');
+});
+
+
+test('fast conversation remembers understood skills and name, keeps latest corrections, and copyedits in one call',async()=>{
+ const f=fixture();let calls=0,sent;
+ f.env.AI.run=async(_,input)=>{calls++;sent=JSON.parse(input.messages.at(-1).content);return {response:{cardName:null,purpose:null,fullName:null,company:'New Studio',role:'Designer',pitch:'I design packaging.',bio:'I design packaging at New Studio for small businesses.',specialties:null,audience:'Small businesses',skills:[],clarifyField:null,clarification:null}};};
+ const prior={answers:['Creative','Professional','Sam','Designer','I design packaging.','Packaging, Branding',null],company:'Old Studio',skills:['Packaging','Branding']};
+ const result=await (await f.call('/api/v1/profile/draft',{mode:'conversation',conversationStyle:'brief',conversationVersion:'2',previousDraft:JSON.stringify(prior),profileName:'Sam',conversation:JSON.stringify([{field:4,answer:'I design packaging. My skills are packaging and branding.'},{field:6,question:'Who would you like to connect with?',answer:'Small businesses. I now work at New Studio.'}])})).json();
+ assert.equal(calls,1);assert.equal(result.next,-1);assert.deepEqual(result.card.skills,['Packaging','Branding']);assert.equal(result.card.company,'New Studio');assert.equal(result.card.fullName,'Sam');assert.match(result.card.bio,/New Studio/);assert.deepEqual(sent.previousDraft.skills,['Packaging','Branding']);
+});
+test('skills volunteered in another turn are retained even if specialties is null',async()=>{
+ const f=fixture();f.env.AI.run=async()=>({response:{cardName:'Work',purpose:'Work',fullName:'Sam',role:'Designer',pitch:'I design packaging.',company:'',bio:'I design packaging.',specialties:null,audience:null,skills:['Packaging','Branding'],clarifyField:null,clarification:null}});
+ const result=await (await f.call('/api/v1/profile/draft',{mode:'conversation',conversationStyle:'brief',conversationVersion:'2',conversation:JSON.stringify([{field:4,answer:'I design packaging. My skills are packaging and branding.'}])})).json();
+ assert.equal(result.next,6);assert.match(result.answers[5],/Packaging/);assert.deepEqual(result.context.skills,['Packaging','Branding']);
+});
+test('genuine ambiguity and explicit skill removal override previous understood values',async()=>{
+ const f=fixture();f.env.AI.run=async()=>({response:{cardName:'Work',purpose:'Work',fullName:'Sam',role:null,pitch:'I help teams.',company:'',bio:'I help teams.',specialties:'',audience:'Teams',skills:[],clarifyField:'role',clarification:'Do you mean systems architecture or building architecture?'}});
+ const result=await (await f.call('/api/v1/profile/draft',{mode:'conversation',conversationStyle:'brief',conversationVersion:'2',previousDraft:JSON.stringify({answers:['Work','Work','Sam','Architect','I help teams.','System integration','Teams'],skills:['System integration'],company:''}),conversation:JSON.stringify([{field:3,answer:'Actually I am a different kind of architect, and remove my skill tags.'}])})).json();
+ assert.equal(result.next,3);assert.equal(result.answers[3],null);assert.equal(result.answers[5],'');assert.deepEqual(result.context.skills,[]);
+});
+
+
+test('fast name-only reply asks card purpose before work, without assuming a category',async()=>{
+ const f=fixture();f.env.AI.run=async()=>({response:{cardName:null,purpose:null,fullName:'Amit Singh',role:null,pitch:null,company:'',bio:'',specialties:null,audience:null,skills:[],clarifyField:null,clarification:null}});
+ const result=await (await f.call('/api/v1/profile/draft',{mode:'conversation',conversationStyle:'brief',conversationVersion:'2',profileName:'Sam',conversation:JSON.stringify([{field:2,answer:'Use Amit Singh instead.'}])})).json();
+ assert.equal(result.next,1);assert.equal(result.answers[2],'Amit Singh');assert.equal(result.answers[1],null);
+});
+
+
+test('new card drafts omit card names, keep purpose private, and enforce a 120 character pitch',async()=>{
+ const f=fixture();let requested;
+ const facts={purpose:null,fullName:'Sam',role:'Florist',pitch:'I create wedding flowers for couples.',company:'Bloom',bio:'I create wedding flowers at Bloom.',specialties:'Floral design',audience:'Couples',skills:['Floral design'],clarifyField:null,clarification:null};
+ f.env.AI.run=async(_,input)=>{requested=input;return {response:facts};};
+ const body={mode:'conversation',conversationStyle:'brief',conversationVersion:'3',profileName:'Sam',conversation:JSON.stringify([{field:4,answer:'I create wedding flowers at Bloom. My skill is floral design. I help couples.'}])};
+ const result=await (await f.call('/api/v1/profile/draft',body)).json();
+ assert.equal(result.next,-1);assert.equal(result.answers[0],'');assert.equal(result.card.cardName,undefined);assert.ok(result.card.pitch.length<=120);
+ assert.equal(requested.response_format.json_schema.properties.cardName,undefined);
+ facts.pitch='a'.repeat(121);assert.equal((await f.call('/api/v1/profile/draft',body)).status,503);
+});
+test('public shares omit private purpose, primary status and legacy card labels',async()=>{
+ const f=fixture();const published=await (await f.call('/api/v1/cards/publish',{card:card({title:'Private label',category:'personal',isDefault:true})})).json();
+ const token=new URL(published.url).pathname.split('/').pop();
+ // Cover a previously published payload too, before a device resync.
+ f.db.prepare('UPDATE card_shares SET payload=? WHERE token=?').run(JSON.stringify({...card(),title:'Old private label',category:'event',isDefault:true}),token);
+ const shared=await (await f.call('/api/v1/cards/shared/'+token,undefined,null,'GET')).json();
+ assert.equal(shared.card.title,undefined);assert.equal(shared.card.category,undefined);assert.equal(shared.card.isDefault,undefined);assert.equal(shared.card.fullName,'Anit');
+});
+
+
+test('private wallet order syncs but is removed from public cards',async()=>{
+ const f=fixture();const payload=card({walletOrder:3});
+ const result=await (await f.call('/api/v1/sync',sync([],{cards:[payload]}))).json();
+ assert.equal(result.cards[0].walletOrder,3);
+ const published=await (await f.call('/api/v1/cards/publish',{card:payload})).json();
+ const token=new URL(published.url).pathname.split('/').pop();
+ const shared=await (await f.call('/api/v1/cards/shared/'+token,undefined,null,'GET')).json();
+ assert.equal(shared.card.walletOrder,undefined);
+ assert.equal((await f.call('/api/v1/sync',sync([],{cards:[card({walletOrder:-1})]}))).status,400);
+});
+
+
+test('web voice search accepts WAV and rejects unsupported audio types',async()=>{
+ const f=fixture(); f.env.GROQ_API_KEY='test-key';
+ const original=globalThis.fetch;
+ try {
+  globalThis.fetch=async(_url,options)=>{
+   const file=options.body.get('file');
+   assert.equal(file.type,'audio/wav'); assert.equal(file.name,'reply.wav');
+   assert.equal(options.body.get('model'),'whisper-large-v3');
+   return Response.json({text:'Find the architect from Bengaluru'});
+  };
+  const response=await f.call('/api/v1/speech/transcribe',{audio:btoa('recorded WAV bytes'),mimeType:'audio/wav'});
+  assert.equal(response.status,200);assert.equal((await response.json()).text,'Find the architect from Bengaluru');
+  assert.equal((await f.call('/api/v1/speech/transcribe',{audio:btoa('bytes'),mimeType:'text/html'})).status,400);
+ } finally {globalThis.fetch=original;}
+});
+
+
+test('AI recall interprets colloquial queries and ranks only supported contacts from this wallet',async()=>{
+ const f=fixture();
+ await f.call('/api/v1/sync',sync([
+  connection('android',{fullName:'Arjun',role:'Android developer',techStack:['Kotlin']}),
+  connection('flutter',{fullName:'Mei',role:'Flutter developer',techStack:['Dart']}),
+  connection('plumber',{fullName:'Owen',role:'Plumber',techStack:['Pipework']})
+ ]));
+ await f.call('/api/v1/sync',sync([connection('private',{fullName:'Private person'})]),'bob');
+ f.vectors.clear(); // Ranking must work even before the vector index has caught up.
+ const original=f.env.AI.run;let calls=0;
+ f.env.AI.run=async(model,input)=>{
+  if(model.includes('bge'))return original(model,input);
+  calls++;
+  const data=JSON.parse(input.messages.at(-1).content);
+  assert.equal(data.query,'techie');
+  assert.ok(data.profiles.some(p=>p.id==='flutter'));assert.ok(!data.profiles.some(p=>p.id==='private'));
+  return {response:JSON.stringify({interpretation:'Developers and IT specialists',matches:[{id:'flutter',score:.92,evidence:'Flutter developer'},{id:'android',score:.9,evidence:'Android developer'},{id:'private',score:.99,evidence:'Private person'},{id:'plumber',score:.99,evidence:'Software engineer'}]})};
+ };
+ const r=await f.call('/api/v1/search/semantic',{query:'techie'});assert.equal(r.status,200);
+ const data=await r.json();assert.equal(data.aiReranked,true);assert.match(data.interpretation,/IT specialists/);
+ assert.deepEqual(data.matches.map(m=>m.connection.id),['flutter','android']);
+ assert.ok(data.matches.every(m=>m.reason.startsWith('Saved evidence:')));assert.equal(calls,1);
+});
+test('recall provider failure explicitly falls back to semantic matches',async()=>{
+ const f=fixture();await f.call('/api/v1/sync',sync([connection()]));
+ const original=f.env.AI.run;
+ f.env.AI.run=async(model,input)=>{if(model.includes('bge'))return original(model,input);throw Error('AI unavailable');};
+ const data=await (await f.call('/api/v1/search/semantic',{query:'designer'})).json();
+ assert.equal(data.aiReranked,false);assert.equal(data.matches[0].connection.id,'person');assert.match(data.aiStatus,/unavailable/);
+});
+
+test('reconnect drafts load only the signed-in owner contact and fail safely',async()=>{
+ const f=fixture();await f.call('/api/v1/sync',sync([connection('alice-only')]));
+ assert.equal((await f.call('/api/v1/reconnect/draft',{connectionId:'alice-only'},'bob')).status,404);
+ assert.equal((await f.call('/api/v1/reconnect/draft',{})).status,400);
+ const original=f.env.AI.run;
+ f.env.AI.run=async(model,input)=>{if(model.includes('bge'))return original(model,input);const data=JSON.parse(input.messages.at(-1).content);assert.equal(data.fullName,'Priya');assert.match(data.rawCue,/Yellow bag/);return {response:{draft:'Hi Priya, how is the packaging work going?'}};};
+ const result=await f.call('/api/v1/reconnect/draft',{connectionId:'alice-only'});
+ assert.equal(result.status,200);assert.equal((await result.json()).aiGenerated,true);
+ f.env.AI.run=async()=>{throw Error('offline');};assert.equal((await f.call('/api/v1/reconnect/draft',{connectionId:'alice-only'})).status,503);
+});
+test('short multilingual recall and refinement context reach AI without losing ownership',async()=>{
+ const f=fixture();await f.call('/api/v1/sync',sync([connection()]));
+ const original=f.env.AI.run;
+ f.env.AI.run=async(model,input)=>{if(model.includes('bge'))return original(model,input);const data=JSON.parse(input.messages.at(-1).content);assert.equal(data.query,'AI');assert.deepEqual(data.context,['लंदन में डिजाइनर']);return {response:{interpretation:'AI designers in London',matches:[]}};};
+ const result=await f.call('/api/v1/search/semantic',{query:'AI',context:['लंदन में डिजाइनर']});
+ assert.equal(result.status,200);assert.equal((await result.json()).aiReranked,true);
+});
+
+test('photo moderation rejects before storage and checks legacy pictures before serving',async()=>{
+ const f=fixture();f.env.GOOGLE_VISION_API_KEY='test-vision';let checks=0;
+ const original=globalThis.fetch;
+ globalThis.fetch=async()=>{checks++;return Response.json({responses:[{safeSearchAnnotation:{adult:'POSSIBLE',violence:'UNLIKELY',racy:'UNLIKELY',medical:'UNLIKELY',spoof:'UNLIKELY'}}]});};
+ try {
+ const handler=createHandler(async()=> 'alice');
+ const response=await handler.fetch(new Request('https://metcue.test/api/v1/photos?purpose=portrait',{method:'POST',body:jpeg}),f.env);
+ assert.equal(response.status,422);assert.equal(checks,1);assert.equal(f.blobs.size,0);assert.equal(f.db.prepare('SELECT count(*) AS n FROM photos').get().n,0);
+ const id='22222222-2222-4222-8222-222222222222';
+ f.db.prepare('INSERT INTO photos(id,user_id,purpose,object_key,content_type) VALUES(?,?,?,?,?)').run(id,'alice','portrait','legacy','image/jpeg');
+ f.blobs.set('legacy',{bytes:jpeg,options:{}});
+ await f.call('/api/v1/sync',sync([],{cards:[card({avatarUrl:`portrait:${id}`})]}));
+ const legacy=await handler.fetch(new Request(`https://metcue.test/api/v1/portraits/${id}`),f.env);
+ assert.equal(legacy.status,422);assert.equal(f.blobs.size,1,'Legacy bytes remain private; account is not deleted');
+ assert.equal(checks,1,'Cached rejection still prevents legacy image access');
+ } finally {globalThis.fetch=original;}
+});
+test('unconfigured production photo moderation never accepts an upload',async()=>{
+ const f=fixture();const response=await createHandler(async()=> 'alice').fetch(new Request('https://metcue.test/api/v1/photos?purpose=portrait',{method:'POST',body:jpeg}),f.env);
+ assert.equal(response.status,503);assert.equal(f.blobs.size,0);
+});
+
+test('account deletion removes safety decisions but preserves anonymised service call totals',async()=>{
+ const f=fixture();await f.call('/api/v1/sync',sync());
+ f.db.prepare('INSERT INTO image_safety_usage(month,day,user_id,calls) VALUES(?,?,?,?)').run('2026-10',1,'alice',3);
+ f.db.prepare('INSERT INTO image_safety_checks(user_id,fingerprint,verdict,categories,model,checked_at) VALUES(?,?,?,?,?,?)').run('alice','hash','passed','[]','test',1);
+ assert.equal((await f.call('/api/v1/account',{confirmation:'DELETE'},'alice','DELETE')).status,200);
+ assert.equal(f.db.prepare('SELECT count(*) AS n FROM image_safety_checks').get().n,0);
+ const usage=f.db.prepare('SELECT * FROM image_safety_usage').get();assert.equal(usage.calls,3);assert.match(usage.user_id,/^deleted:/);
+});
+
+test('text checks reject complete sync batch before modifying previous cards',async()=>{
+ const f=fixture();await f.call('/api/v1/sync',sync([],{cards:[card({headline:'Safe headline'})]}));
+ const old=f.db.prepare("SELECT payload FROM wallet_records WHERE kind='card'").get().payload;
+ const handler=createHandler(async()=> 'alice',undefined,undefined,async(_env,_uid,value)=>{if(value.includes('Fuck'))throw Error('blocked');});
+ const result=await handler.fetch(new Request('https://metcue.test/api/v1/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(sync([],{cards:[card({headline:'Fuck',updatedAt:'2026-10-02T12:00:00Z'})],deleted:[{kind:'card',id:'my-card',updatedAt:'2026-10-02T12:00:00Z'}]}))}),f.env);
+ assert.equal(result.status,503);assert.equal(f.db.prepare("SELECT payload FROM wallet_records WHERE kind='card'").get().payload,old);assert.equal(f.db.prepare("SELECT deleted FROM wallet_records WHERE kind='card'").get().deleted,0);
+});
+test('production text paths block standalone profanity without provider credentials',async()=>{
+ const f=fixture(),handler=createHandler(async()=> 'alice');
+ const call=(path,body)=>handler.fetch(new Request('https://metcue.test'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),f.env);
+ for(const path of ['/api/v1/cards/publish','/api/v1/text/check'])assert.equal((await call(path,{card:card({headline:'Fuck'})})).status,422);
+ assert.equal((await call('/api/v1/profile',{profile:{firstName:'Sam',lastName:'Test',intro:'Fuck off',emails:[],links:[],updatedAt:at}})).status,422);
+ assert.equal((await call('/api/v1/sync',sync([],{cards:[card({headline:'Fuck'})]}))).status,422);
+});
+
+test('text preflight does not reject unsaved local timestamps or require a saved record ID',async()=>{
+ const f=fixture(),handler=createHandler(async()=> 'alice',undefined,undefined,async()=>{});
+ const response=await handler.fetch(new Request('https://metcue.test/api/v1/text/check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({card:{fullName:'Sam',role:'Architect',updatedAt:'2099-10-24T16:30:00'}})}),f.env);
+ assert.equal(response.status,200);assert.equal((await response.json()).safe,true);
+ assert.equal(f.db.prepare('SELECT count(*) AS n FROM wallet_records').get().n,0);
+});
+
+test('card appearance survives sync for own and received cards',async()=>{
+ const f=fixture();const appearance={cardFinish:'linen',themeColorHex:'#234B42'};
+ const response=await f.call('/api/v1/sync',sync([connection('styled',appearance)],{cards:[card(appearance)]}));
+ assert.equal(response.status,200);let data=await response.json();
+ for(const item of [data.cards[0],data.connections[0]]) {assert.equal(item.cardFinish,'linen');assert.equal(item.themeColorHex,'#234B42');}
+ data=await(await f.call('/api/v1/sync',sync())).json();assert.equal(data.cards[0].cardFinish,'linen');assert.equal(data.connections[0].themeColorHex,'#234B42');
 });

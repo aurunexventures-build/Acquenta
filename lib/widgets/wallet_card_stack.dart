@@ -174,7 +174,7 @@ class _WalletCardStackState extends State<WalletCardStack> {
                                 ),
                               ),
                             ),
-                            if (card.links.isNotEmpty)
+                            if (card.links.isNotEmpty && card.links.length <= 2)
                               Flexible(
                                 child: SocialIconRow(
                                   links: card.links,
@@ -183,8 +183,13 @@ class _WalletCardStackState extends State<WalletCardStack> {
                               ),
                           ],
                         ),
+                        if (card.links.length > 2)
+                          SocialIconRow(
+                            links: card.links,
+                            color: Colors.white70,
+                          ),
                         Text(
-                          card.role.isEmpty ? card.title : card.role,
+                          card.role.isEmpty ? card.company : card.role,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(

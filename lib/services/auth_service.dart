@@ -48,6 +48,18 @@ class AuthService extends ChangeNotifier {
   }
 
   User? get currentUser => _auth?.currentUser;
+  String get accountPhotoUrl {
+    final user = currentUser;
+    if (user == null) return '';
+    final own = user.photoURL?.trim() ?? '';
+    if (own.isNotEmpty) return own;
+    return user.providerData
+            .map((provider) => provider.photoURL?.trim() ?? '')
+            .where((url) => url.isNotEmpty)
+            .firstOrNull ??
+        '';
+  }
+
   bool get isAuthenticated => currentUser != null;
   bool get isAnonymous => currentUser?.isAnonymous ?? false;
   String? get userEmail => currentUser?.email;

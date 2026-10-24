@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/sync_service.dart';
@@ -80,7 +81,7 @@ class _CardTextFieldState extends State<CardTextField> {
         initialText: original,
         title: widget.label,
         organise: _organise,
-        maxLength: 3000,
+        maxLength: widget.maxLength ?? 3000,
       ),
     );
     if (!mounted ||
@@ -138,15 +139,21 @@ class _CardTextFieldState extends State<CardTextField> {
           controller: _controller,
           maxLines: widget.maxLines,
           maxLength: widget.maxLength,
+          maxLengthEnforcement: MaxLengthEnforcement.none,
           keyboardType: widget.keyboardType,
           onChanged: widget.onChanged,
           onSaved: widget.onSaved,
           scrollPadding: const EdgeInsets.only(top: 40, bottom: 96),
-          validator: widget.required
-              ? (value) => value == null || value.trim().isEmpty
-                    ? 'This field is required.'
-                    : null
-              : null,
+          validator: (value) {
+            if (widget.required && (value == null || value.trim().isEmpty)) {
+              return 'This field is required.';
+            }
+            if (widget.maxLength != null &&
+                (value?.characters.length ?? 0) > widget.maxLength!) {
+              return 'Use up to ${widget.maxLength} characters.';
+            }
+            return null;
+          },
           decoration: InputDecoration(
             counterText: widget.showCounter ? null : '',
             hintText: widget.hint,

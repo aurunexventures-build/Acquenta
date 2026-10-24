@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 abstract final class MetCueTheme {
   static const paper = Color(0xFFF6F5F1);
   static const ink = Color(0xFF202128);
-  static const purple = Color(0xFF6554C0);
+  static const purple = Color(0xFF2563EB);
   static const muted = Color(0xFF82798E);
-  static const border = Color(0xFFE4DFEC);
+  static const border = Color(0xFFDEE5F0);
 
   static ThemeData get light {
     final scheme =
@@ -89,7 +89,7 @@ abstract final class MetCueTheme {
       ),
       navigationBarTheme: const NavigationBarThemeData(
         backgroundColor: Colors.white,
-        indicatorColor: Color(0xFFE9E3F7),
+        indicatorColor: Color(0xFFE6EEFF),
         elevation: 0,
       ),
       filledButtonTheme: FilledButtonThemeData(

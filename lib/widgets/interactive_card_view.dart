@@ -1,3 +1,4 @@
+import 'card_finish_picker.dart';
 import 'social_icon_row.dart';
 import '../screens/card_detail_screen.dart';
 import 'face_avatar.dart';
@@ -69,81 +70,26 @@ class _InteractiveCardViewState extends State<InteractiveCardView>
 
   // Card theme helper
   _CardThemeConfig _getThemeConfig(String hexColor) {
-    switch (hexColor.toUpperCase()) {
-      case '#0D9488':
-      case '#0E231C':
-      case '#059669':
-        return _CardThemeConfig(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF0F2B20), Color(0xFF071711)],
-          ),
-          accentColor: const Color(0xFF34D399),
-          textColor: Colors.white,
-          subtextColor: const Color(0xFFA7F3D0),
-          borderColor: const Color(0x3334D399),
-          badgeBg: const Color(0x2634D399),
-        );
-      case '#F59E0B':
-      case '#EAB308':
-      case '#D97706':
-        return _CardThemeConfig(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF291B07), Color(0xFF140D04)],
-          ),
-          accentColor: const Color(0xFFFBBF24),
-          textColor: Colors.white,
-          subtextColor: const Color(0xFFFDE68A),
-          borderColor: const Color(0x33FBBF24),
-          badgeBg: const Color(0x26FBBF24),
-        );
-      case '#7C3AED':
-      case '#8B5CF6':
-        return _CardThemeConfig(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF201335), Color(0xFF10091D)],
-          ),
-          accentColor: const Color(0xFFA78BFA),
-          textColor: Colors.white,
-          subtextColor: const Color(0xFFDDD6FE),
-          borderColor: const Color(0x33A78BFA),
-          badgeBg: const Color(0x26A78BFA),
-        );
-      case '#2563EB':
-      case '#3B82F6':
-        return _CardThemeConfig(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF131D33), Color(0xFF0A0F1D)],
-          ),
-          accentColor: const Color(0xFF60A5FA),
-          textColor: Colors.white,
-          subtextColor: const Color(0xFFBFDBFE),
-          borderColor: const Color(0x3360A5FA),
-          badgeBg: const Color(0x2660A5FA),
-        );
-      case '#18181B':
-      case '#111827':
-      default:
-        return _CardThemeConfig(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF1F2228), Color(0xFF121417)],
-          ),
-          accentColor: const Color(0xFFE2E8F0),
-          textColor: const Color(0xFFF8FAFC),
-          subtextColor: const Color(0xFF94A3B8),
-          borderColor: const Color(0x26FFFFFF),
-          badgeBg: const Color(0x1AFFFFFF),
-        );
-    }
+    final colour = Color(
+      int.tryParse(hexColor.replaceFirst('#', 'FF'), radix: 16) ?? 0xFF2563EB,
+    );
+    final base = Color.lerp(
+      colour,
+      Colors.black,
+      colour.computeLuminance() > .22 ? .65 : .08,
+    )!;
+    return _CardThemeConfig(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [base, Color.lerp(base, Colors.black, .16)!],
+      ),
+      accentColor: const Color(0xFFE7EFFF),
+      textColor: Colors.white,
+      subtextColor: Colors.white70,
+      borderColor: Colors.white24,
+      badgeBg: Colors.white12,
+    );
   }
 
   @override
@@ -203,198 +149,164 @@ class _InteractiveCardViewState extends State<InteractiveCardView>
           borderRadius: BorderRadius.circular(22),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Top Header Row
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: theme.badgeBg,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: theme.borderColor,
-                              width: 0.8,
-                            ),
-                          ),
-                          child: Text(
-                            widget.card.title.toUpperCase(),
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.8,
-                              color: theme.accentColor,
-                            ),
-                          ),
-                        ),
-                        if (widget.card.isDefault) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.amber.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Row(
-                              children: [
-                                Icon(
-                                  Icons.star_rounded,
-                                  size: 12,
-                                  color: Colors.amber,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        // Tap to Flip Prompt
-                        if (widget.isExpanded)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Row(
-                              children: [
-                                Icon(
-                                  Icons.flip_rounded,
-                                  size: 12,
-                                  color: Colors.white70,
-                                ),
-                              ],
-                            ),
-                          )
-                        else
-                          Icon(
-                            Icons.nfc_rounded,
-                            size: 16,
-                            color: theme.subtextColor.withValues(alpha: 0.7),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 20),
-                FaceAvatar(
-                  name: widget.card.fullName,
-                  photo: widget.card.avatarUrl,
-                  radius: 32,
-                  backgroundColor: theme.badgeBg,
-                  foregroundColor: theme.accentColor,
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        widget.card.fullName,
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.4,
-                          color: theme.textColor,
-                        ),
-                      ),
-                    ),
-                    if (widget.card.links.isNotEmpty)
-                      Flexible(
-                        child: SocialIconRow(
-                          links: widget.card.links,
-                          color: theme.textColor,
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  widget.card.role,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: theme.subtextColor,
-                  ),
-                ),
-
-                if (widget.isExpanded && widget.card.headline.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    widget.card.headline,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      height: 1.4,
-                      color: theme.textColor.withValues(alpha: 0.8),
-                    ),
-                  ),
-                ],
-
-                // Bottom Footer on expanded card
-                if (widget.isExpanded) ...[
-                  const SizedBox(height: 20),
-                  const Divider(color: Color(0x1FFFFFFF), height: 1),
-                  const SizedBox(height: 14),
+            child: CustomPaint(
+              painter: CardFinishPainter(
+                widget.card.cardFinish,
+                widget.card.fullName,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Top Header Row
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      IconButton(
-                        tooltip: 'Details',
-                        icon: Icon(
-                          Icons.info_outline_rounded,
-                          color: theme.subtextColor,
-                          size: 20,
-                        ),
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                CardDetailScreen(cardId: widget.card.id),
-                          ),
-                        ),
-                      ),
                       Row(
                         children: [
-                          if (widget.onEditTapped != null)
-                            IconButton(
-                              icon: const Icon(Icons.edit_outlined, size: 18),
-                              color: Colors.white70,
-                              onPressed: widget.onEditTapped,
-                              visualDensity: VisualDensity.compact,
-                              tooltip: 'Edit Card',
+                          // Tap to Flip Prompt
+                          if (widget.isExpanded)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(
+                                    Icons.flip_rounded,
+                                    size: 12,
+                                    color: Colors.white70,
+                                  ),
+                                ],
+                              ),
+                            )
+                          else
+                            Icon(
+                              Icons.nfc_rounded,
+                              size: 16,
+                              color: theme.subtextColor.withValues(alpha: 0.7),
                             ),
-                          IconButton(
-                            icon: const Icon(Icons.qr_code_2_rounded, size: 20),
-                            color: theme.accentColor,
-                            onPressed: _toggleFlip,
-                            visualDensity: VisualDensity.compact,
-                            tooltip: 'Flip for QR Code',
-                          ),
                         ],
                       ),
                     ],
                   ),
+
+                  const SizedBox(height: 20),
+                  FaceAvatar(
+                    name: widget.card.fullName,
+                    photo: widget.card.avatarUrl,
+                    radius: 32,
+                    backgroundColor: theme.badgeBg,
+                    foregroundColor: theme.accentColor,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          widget.card.fullName,
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.4,
+                            color: theme.textColor,
+                          ),
+                        ),
+                      ),
+                      if (widget.card.links.isNotEmpty &&
+                          widget.card.links.length <= 2)
+                        Flexible(
+                          child: SocialIconRow(
+                            links: widget.card.links,
+                            color: theme.textColor,
+                          ),
+                        ),
+                    ],
+                  ),
+                  if (widget.card.links.length > 2)
+                    SocialIconRow(
+                      links: widget.card.links,
+                      color: theme.textColor,
+                    ),
+                  const SizedBox(height: 4),
+                  Text(
+                    widget.card.role,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: theme.subtextColor,
+                    ),
+                  ),
+
+                  if (widget.isExpanded && widget.card.headline.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      widget.card.headline,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.4,
+                        color: theme.textColor.withValues(alpha: 0.8),
+                      ),
+                    ),
+                  ],
+
+                  // Bottom Footer on expanded card
+                  if (widget.isExpanded) ...[
+                    const SizedBox(height: 20),
+                    const Divider(color: Color(0x1FFFFFFF), height: 1),
+                    const SizedBox(height: 14),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        IconButton(
+                          tooltip: 'Details',
+                          icon: Icon(
+                            Icons.info_outline_rounded,
+                            color: theme.subtextColor,
+                            size: 20,
+                          ),
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  CardDetailScreen(cardId: widget.card.id),
+                            ),
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            if (widget.onEditTapped != null)
+                              IconButton(
+                                icon: const Icon(Icons.edit_outlined, size: 18),
+                                color: Colors.white70,
+                                onPressed: widget.onEditTapped,
+                                visualDensity: VisualDensity.compact,
+                                tooltip: 'Edit Card',
+                              ),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.qr_code_2_rounded,
+                                size: 20,
+                              ),
+                              color: theme.accentColor,
+                              onPressed: _toggleFlip,
+                              visualDensity: VisualDensity.compact,
+                              tooltip: 'Flip for QR Code',
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),

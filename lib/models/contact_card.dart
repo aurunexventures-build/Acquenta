@@ -20,8 +20,10 @@ extension CardCategoryExtension on CardCategory {
 }
 
 class ContactCard {
+  static const pitchLimit = 120;
   final String id;
   final String avatarUrl;
+  final String cardFinish;
   final String
   title; // Card label, e.g. "Lead Flutter Dev", "Side Project Creator"
   final CardCategory category;
@@ -38,13 +40,15 @@ class ContactCard {
   final List<CardLink> links;
   final String themeColorHex;
   final bool isDefault;
+  final int? walletOrder; // Private ordering metadata, never shared publicly.
   final DateTime createdAt;
   final DateTime updatedAt;
 
   const ContactCard({
     required this.id,
     this.avatarUrl = '',
-    required this.title,
+    this.cardFinish = 'contour',
+    this.title = '',
     this.category = CardCategory.professional,
     required this.fullName,
     this.headline = '',
@@ -58,6 +62,7 @@ class ContactCard {
     this.links = const [],
     this.themeColorHex = '#3B82F6',
     this.isDefault = false,
+    this.walletOrder,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -66,7 +71,7 @@ class ContactCard {
     return {
       'id': id,
       'avatarUrl': avatarUrl,
-      'title': title,
+      'cardFinish': cardFinish,
       'category': category.name,
       'fullName': fullName,
       'headline': headline,
@@ -80,6 +85,7 @@ class ContactCard {
       'links': links.map((l) => l.toJson()).toList(),
       'themeColorHex': themeColorHex,
       'isDefault': isDefault,
+      if (walletOrder != null) 'walletOrder': walletOrder,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
@@ -89,6 +95,15 @@ class ContactCard {
     return ContactCard(
       id: json['id'] as String? ?? '',
       avatarUrl: json['avatarUrl'] as String? ?? '',
+      cardFinish:
+          const [
+            'plain',
+            'linen',
+            'contour',
+            'monogram',
+          ].contains(json['cardFinish'])
+          ? json['cardFinish'] as String
+          : 'contour',
       title: json['title'] as String? ?? 'My Card',
       category: CardCategory.values.firstWhere(
         (e) => e.name == (json['category'] as String?),
@@ -115,6 +130,9 @@ class ContactCard {
           const [],
       themeColorHex: json['themeColorHex'] as String? ?? '#3B82F6',
       isDefault: json['isDefault'] as bool? ?? false,
+      walletOrder: json['walletOrder'] is int
+          ? json['walletOrder'] as int
+          : null,
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'] as String) ?? DateTime.now()
           : DateTime.now(),
@@ -127,6 +145,7 @@ class ContactCard {
   ContactCard copyWith({
     String? id,
     String? avatarUrl,
+    String? cardFinish,
     String? title,
     CardCategory? category,
     String? fullName,
@@ -141,12 +160,14 @@ class ContactCard {
     List<CardLink>? links,
     String? themeColorHex,
     bool? isDefault,
+    int? walletOrder,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
     return ContactCard(
       id: id ?? this.id,
       avatarUrl: avatarUrl ?? this.avatarUrl,
+      cardFinish: cardFinish ?? this.cardFinish,
       title: title ?? this.title,
       category: category ?? this.category,
       fullName: fullName ?? this.fullName,
@@ -161,6 +182,7 @@ class ContactCard {
       links: links ?? this.links,
       themeColorHex: themeColorHex ?? this.themeColorHex,
       isDefault: isDefault ?? this.isDefault,
+      walletOrder: walletOrder ?? this.walletOrder,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

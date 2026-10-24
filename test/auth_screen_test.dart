@@ -17,6 +17,8 @@ class TestCredential extends Fake implements UserCredential {}
 
 class LoginUser extends Fake implements User {
   @override
+  String? get photoURL => null;
+  @override
   List<UserInfo> get providerData => const [];
   final String id;
   LoginUser(this.id);

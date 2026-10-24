@@ -30,6 +30,9 @@ class ConnectionsProvider extends ChangeNotifier {
   String syncStatus = '';
   int _searchGeneration = 0;
   List<Map<String, dynamic>> _cloudMatches = [];
+  final Map<String, Map<String, dynamic>> _recallCache = {};
+  bool _aiRanked = false;
+  String? recallInterpretation;
   bool aiSearching = false;
   bool syncing = false;
   String aiStatus = 'Local search works offline. Sign in for AI recall.';
@@ -37,6 +40,8 @@ class ConnectionsProvider extends ChangeNotifier {
   bool _isLoading = true;
 
   String _searchQuery = '';
+  final List<String> _recallContext = [];
+  List<String> get recallContext => List.unmodifiable(_recallContext);
   String? _selectedEventFilter;
   String? _selectedTechStackFilter;
   String? _selectedVibeFilter;
@@ -68,17 +73,23 @@ class ConnectionsProvider extends ChangeNotifier {
   List<SearchResult> get searchResults {
     final local = SearchService.search(
       connections: _connections,
-      query: _searchQuery,
+      query: [..._recallContext, _searchQuery].join(' '),
       filterEvent: _selectedEventFilter,
       filterTechStack: _selectedTechStackFilter,
       filterVibe: _selectedVibeFilter,
     );
     if (_cloudMatches.isEmpty ||
-        SearchService.queryTerms(_searchQuery).isEmpty) {
-      return local;
+        (SearchService.queryTerms(_searchQuery).isEmpty && !_aiRanked)) {
+      return _aiRanked ? [] : local;
     }
     final candidates = {
-      for (final result in local) result.connection.id: result,
+      for (final result in local)
+        if (!_aiRanked ||
+            _cloudMatches.any(
+              (match) =>
+                  (match['connection'] as Map)['id'] == result.connection.id,
+            ))
+          result.connection.id: result,
     };
     final ranks = <String, double>{};
     for (var i = 0; i < local.length; i++) {
@@ -89,7 +100,8 @@ class ConnectionsProvider extends ChangeNotifier {
       final id = (match['connection'] as Map)['id'];
       final current = _connections.where((c) => c.id == id).firstOrNull;
       if (current == null ||
-          !SearchService.supportsIntent(current, _searchQuery)) {
+          (!_aiRanked &&
+              !SearchService.supportsIntent(current, _searchQuery))) {
         continue;
       }
       final filtered = SearchService.search(
@@ -101,13 +113,14 @@ class ConnectionsProvider extends ChangeNotifier {
       );
       if (filtered.isEmpty) continue;
       final previous = candidates[current.id];
-      if (previous == null && (match['score'] as num).toDouble() < .70) {
+      if (previous == null &&
+          (match['score'] as num).toDouble() < (_aiRanked ? .60 : .70)) {
         continue;
       }
       candidates[current.id] = SearchResult(
         connection: current,
         score: previous?.score ?? (match['score'] as num).toDouble() * 100,
-        matchReasons: [...?previous?.matchReasons, match['reason'] as String],
+        matchReasons: [match['reason'] as String, ...?previous?.matchReasons],
         cognitiveReason: previous?.cognitiveReason ?? '',
         activatedDomain: previous?.activatedDomain ?? '',
       );
@@ -140,6 +153,7 @@ class ConnectionsProvider extends ChangeNotifier {
   }
 
   void clearForAccountSwitch() {
+    _recallCache.clear();
     _syncTimer?.cancel();
     _syncRequested = false;
     syncStatus = '';
@@ -147,6 +161,7 @@ class ConnectionsProvider extends ChangeNotifier {
     _connections = [];
     unawaited(reminders.refresh(_auth?.currentUser?.uid ?? 'guest', []));
     _searchQuery = '';
+    _recallContext.clear();
     _invalidateSearch();
     _selectedEventFilter = null;
     _selectedTechStackFilter = null;
@@ -159,6 +174,8 @@ class ConnectionsProvider extends ChangeNotifier {
     _searchTimer?.cancel();
     _searchGeneration++;
     _cloudMatches = [];
+    _aiRanked = false;
+    recallInterpretation = null;
     aiSearching = false;
   }
 
@@ -169,26 +186,53 @@ class ConnectionsProvider extends ChangeNotifier {
       return;
     }
     final query = _searchQuery.trim();
-    if (query.length < 3 || SearchService.queryTerms(query).isEmpty) {
+    if (query.isEmpty) {
       aiStatus = 'Local search';
       return;
     }
+    final context = List<String>.of(_recallContext);
     final generation = _searchGeneration;
     final scope = _storageService.scope;
     aiStatus = 'Searching your saved cues…';
     aiSearching = true;
     _searchTimer = Timer(const Duration(milliseconds: 700), () async {
       try {
-        final data = await _syncService.semanticSearch(query, auth);
+        final cacheKey =
+            '$scope|${jsonEncode(context)}|${query.toLowerCase()}|${_connections.map((c) => '${c.id}:${c.updatedAt.toIso8601String()}').join(',')}';
+        final cached = _recallCache[cacheKey];
+        final fresh =
+            cached != null &&
+            DateTime.now().millisecondsSinceEpoch -
+                    (cached['_cachedAt'] as int) <
+                60000;
+        final data = fresh
+            ? cached
+            : context.isEmpty
+            ? await _syncService.semanticSearch(query, auth)
+            : await _syncService.request('/api/v1/search/semantic', {
+                'query': query,
+                'context': context,
+              }, auth);
         if (generation != _searchGeneration || scope != _storageService.scope) {
           return;
         }
+        if (data['aiReranked'] == true && !fresh) {
+          if (_recallCache.length >= 10) {
+            _recallCache.remove(_recallCache.keys.first);
+          }
+          _recallCache[cacheKey] = {
+            ...data,
+            '_cachedAt': DateTime.now().millisecondsSinceEpoch,
+          };
+        }
+        _aiRanked = data['aiReranked'] == true;
+        recallInterpretation = data['interpretation'] as String?;
         _cloudMatches = (data['matches'] as List)
             .map((e) => Map<String, dynamic>.from(e))
             .toList();
-        aiStatus = data['indexed'] == true
-            ? 'AI + local recall. Sync new cues to include them.'
-            : 'AI + local recall. Some cues are waiting to be indexed.';
+        aiStatus = _aiRanked
+            ? 'AI + local recall. ${recallInterpretation ?? "Matched against saved details."}'
+            : 'Semantic + local recall. AI ranking is unavailable.';
       } catch (_) {
         if (generation != _searchGeneration || scope != _storageService.scope) {
           return;
@@ -364,7 +408,20 @@ class ConnectionsProvider extends ChangeNotifier {
   }
 
   void setSearchQuery(String query) {
+    _recallContext.clear();
     _searchQuery = query;
+    _invalidateSearch();
+    _scheduleAi();
+    notifyListeners();
+  }
+
+  void refineRecall(String query) {
+    if (query.trim().isEmpty) return;
+    if (_searchQuery.trim().isNotEmpty) _recallContext.add(_searchQuery.trim());
+    if (_recallContext.length > 4) {
+      _recallContext.removeRange(0, _recallContext.length - 4);
+    }
+    _searchQuery = query.trim();
     _invalidateSearch();
     _scheduleAi();
     notifyListeners();
@@ -389,6 +446,7 @@ class ConnectionsProvider extends ChangeNotifier {
 
   void clearFilters() {
     _searchQuery = '';
+    _recallContext.clear();
     _invalidateSearch();
     _selectedEventFilter = null;
     _selectedTechStackFilter = null;

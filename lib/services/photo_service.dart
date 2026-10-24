@@ -6,6 +6,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'auth_service.dart';
 import 'sync_service.dart';
 
+class PhotoSafetyException implements Exception {
+  final String message;
+  const PhotoSafetyException(this.message);
+  @override
+  String toString() => message;
+}
+
 class PhotoService {
   static const maxBytes = 512 * 1024;
 
@@ -107,7 +114,7 @@ class PhotoService {
     }
     final bytes = decodeLocal(value),
         prefs = await SharedPreferences.getInstance();
-    final key = '$uid:photo-upload:$purpose:${sha256.convert(bytes)}';
+    final key = '$uid:photo-upload:safety-v1:$purpose:${sha256.convert(bytes)}';
     final cached = prefs.getString(key);
     if (cached != null) return cached;
     if (uid != auth.currentUser?.uid) {
@@ -124,6 +131,16 @@ class PhotoService {
         )
         .timeout(const Duration(seconds: 30));
     if (response.statusCode != 200) {
+      if (response.statusCode == 422) {
+        throw const PhotoSafetyException(
+          'This photo could not pass our safety check. Please choose another image.',
+        );
+      }
+      if (response.statusCode == 503 || response.statusCode == 429) {
+        throw const PhotoSafetyException(
+          'Photo safety checks are unavailable or at their limit. Please try again later.',
+        );
+      }
       throw Exception('Could not upload the photo. The local copy is kept.');
     }
     final ref = jsonDecode(response.body)['reference'] as String;
@@ -131,7 +148,7 @@ class PhotoService {
       throw Exception('Account changed during photo upload.');
     }
     await prefs.setString(key, ref);
-    await prefs.setString('$uid:photo-cache:$ref', value);
+    await prefs.setString('$uid:photo-cache:safety-v1:$ref', value);
     return ref;
   }
 
@@ -142,7 +159,7 @@ class PhotoService {
     final uid = auth?.currentUser?.uid;
     if (ref.startsWith('photo:') && uid == null) return null;
     final prefs = await SharedPreferences.getInstance(),
-        cacheKey = '${uid ?? 'guest'}:photo-cache:$ref';
+        cacheKey = '${uid ?? 'guest'}:photo-cache:safety-v1:$ref';
     final cached = prefs.getString(cacheKey);
     if (cached != null) return decodeLocal(cached);
     final client = http.Client();

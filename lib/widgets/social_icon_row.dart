@@ -33,35 +33,11 @@ class SocialIconRow extends StatelessWidget {
     spacing: 0,
     runSpacing: 0,
     children: [
-      ...links
-          .take(2)
-          .map(
-            (link) => IconButton(
-              tooltip: link.platform.label,
-              icon: FaIcon(link.defaultIcon, size: 18, color: color),
-              onPressed: () => _open(context, link),
-            ),
-          ),
-      if (links.length > 2)
-        PopupMenuButton<CardLink>(
-          tooltip: 'More profiles',
-          icon: Icon(Icons.more_horiz, color: color),
-          onSelected: (link) => _open(context, link),
-          itemBuilder: (_) => links
-              .skip(2)
-              .map(
-                (link) => PopupMenuItem(
-                  value: link,
-                  child: Row(
-                    children: [
-                      FaIcon(link.defaultIcon, size: 18),
-                      const SizedBox(width: 12),
-                      Text(link.platform.label),
-                    ],
-                  ),
-                ),
-              )
-              .toList(),
+      for (final link in links)
+        IconButton(
+          tooltip: link.platform.label,
+          icon: FaIcon(link.defaultIcon, size: 18, color: color),
+          onPressed: () => _open(context, link),
         ),
     ],
   );

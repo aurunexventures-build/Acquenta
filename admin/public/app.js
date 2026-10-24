@@ -15,7 +15,7 @@ function renderAudit(parent,rows){if(!rows.length){empty(parent,'No moderation a
 async function overview(){const [summary,audit]=await Promise.all([data('/api/overview'),data('/api/audit')]);$('stats').replaceChildren();for(const [label,key]of [['Synced users','users'],['Identity cards','cards'],['Uploaded portraits','portraits'],['Suspended users','suspended'],['Hidden portraits','hidden'],['AI requests today','aiToday']]){const tile=el('article',null,'stat');tile.append(el('small',label),el('strong',Number(summary[key]||0).toLocaleString()));$('stats').append(tile);}renderAudit($('recent'),audit.slice(0,4));}
 async function users(){await pendingDeletions();const result=await data(`/api/users?q=${encodeURIComponent($('search').value)}&offset=${usersOffset}`);const list=$('user-list');list.replaceChildren();if(!result.users.length)empty(list,'No synced users found.');for(const user of result.users){const item=el('article',null,'user'),details=el('div');details.append(el('h3',user.display_name||user.card_name||'Acquenta user'),el('div',user.suspended?'Suspended':'Active',`pill ${user.suspended?'flag':''}`),el('p',user.email||'Account email not yet synced'),el('p',`${user.cards} cards · ${user.connections} connections · Last sync: ${time(user.last_sync)}`),el('div',user.user_id,'uid'));if(user.reason)details.append(el('p',`Moderation note: ${user.reason}`));const actions=el('div',null,'user-actions');if(!user.is_admin)actions.append(actionButton(user.suspended?'restore-user':'suspend',user.user_id,user.suspended?'Restore cloud access':'Suspend cloud access'));if(user.is_admin){details.append(el('div','Admin account · Cannot be deleted','pill'));actions.append(el('span','Protected administrator account'));}else if(user.email&&isOwner){actions.append(deleteUserButton(user.user_id,user.email));}else{actions.append(el('span','Email unavailable · deletion disabled'));}item.append(details,actions);list.append(item);}$('users-prev').disabled=usersOffset===0;$('users-next').disabled=!result.more;}
 async function portraits(){for(const url of blobs)URL.revokeObjectURL(url);blobs=[];const result=await data(`/api/portraits?offset=${photosOffset}`),list=$('portrait-list');list.replaceChildren();if(!result.portraits.length)empty(list,'No uploaded card portraits to review yet.');for(const portrait of result.portraits){const tile=el('article',null,'portrait'),button=el('button',null,'image-button'),img=el('img');img.alt=`Portrait for ${portrait.name||'Acquenta user'}`;button.setAttribute('aria-label',img.alt);button.append(img);button.onclick=()=>{$('large-image').src=img.src;$('image-dialog').showModal();};const details=el('div',null,'details');details.append(el('h3',portrait.name||'Acquenta user'),el('div',portrait.hidden?'Hidden':'Visible',`pill ${portrait.hidden?'flag':''}`),el('p',time(portrait.created_at),'muted'),el('div',portrait.user_id,'uid'));if(portrait.reason)details.append(el('p',portrait.reason,'muted'));details.append(actionButton(portrait.hidden?'restore-photo':'hide-photo',portrait.id,portrait.hidden?'Restore portrait':'Hide portrait'));tile.append(button,details);list.append(tile);try{const response=await api(`/api/portraits/${portrait.id}`);const url=URL.createObjectURL(await response.blob());blobs.push(url);img.src=url;}catch{img.alt='Portrait unavailable';button.disabled=true;}}$('photos-prev').disabled=photosOffset===0;$('photos-next').disabled=!result.more;}
-async function show(view=currentView){currentView=view;for(const section of ['overview','users','portraits','audit','admins'])$(section).hidden=section!==view;for(const button of document.querySelectorAll('nav button'))button.classList.toggle('active',button.dataset.view===view);$('heading').textContent={overview:'Overview',users:'Users',portraits:'Portrait review',audit:'Moderation history',admins:'Administrators'}[view];status('Loading…');try{if(view==='admins')await administrators();if(view==='overview')await overview();if(view==='users')await users();if(view==='portraits')await portraits();if(view==='audit')renderAudit($('audit-list'),await data('/api/audit'));status('');}catch(error){status(error.message);}}
+async function show(view=currentView){currentView=view;for(const section of ['overview','users','portraits','audit','admins','ai'])$(section).hidden=section!==view;for(const button of document.querySelectorAll('nav button'))button.classList.toggle('active',button.dataset.view===view);$('heading').textContent={overview:'Overview',users:'Users',portraits:'Portrait review',audit:'Moderation history',admins:'Administrators',ai:'AI & usage'}[view];status('Loading…');try{if(view==='ai')await renderAIUsage();if(view==='admins')await administrators();if(view==='overview')await overview();if(view==='users')await users();if(view==='portraits')await portraits();if(view==='audit')renderAudit($('audit-list'),await data('/api/audit'));status('');}catch(error){status(error.message);}}
 for(const button of document.querySelectorAll('[data-view]'))button.onclick=()=>{if(auth.currentUser&&!$('dashboard').hidden)void show(button.dataset.view);};
 $('google').onclick=async()=>{try{status('Opening Google sign-in…');const provider=new GoogleAuthProvider();provider.setCustomParameters({prompt:'select_account'});await signInWithPopup(auth,provider);}catch(error){status(error.code==='auth/unauthorized-domain'?'Google sign-in is awaiting domain configuration. You can use your Acquenta email and password.':error.message);}};
 $('login-form').onsubmit=async event=>{event.preventDefault();try{status('Signing in…');await signInWithEmailAndPassword(auth,$('email').value,$('password').value);$('password').value='';}catch{status('Sign-in failed. Check your Acquenta email and password.');}};
@@ -23,7 +23,7 @@ $('reset').onclick=async()=>{try{await sendPasswordResetEmail(auth,$('email').va
 function lockWorkspace(){
  document.body.classList.add('signed-out');$('sidebar').hidden=true;$('workspace-header').hidden=true;$('dashboard').hidden=true;$('login').hidden=false;$('admins-nav').hidden=true;
  for(const dialog of document.querySelectorAll('dialog'))dialog.close();
- for(const id of ['stats','recent','user-list','portrait-list','audit-list','pending-deletions','admin-list'])$(id).replaceChildren();
+ for(const id of ['stats','recent','user-list','portrait-list','audit-list','pending-deletions','admin-list','ai-stats','ai-model-usage'])$(id).replaceChildren();
  $('large-image').removeAttribute('src');for(const url of blobs)URL.revokeObjectURL(url);blobs=[];pending=null;ownerUid='';isOwner=false;currentView='overview';usersOffset=0;photosOffset=0;$('password').value='';$('delete-password').value='';
 }
 $('signout').onclick=async()=>{++authVersion;lockWorkspace();try{await signOut(auth);}catch(error){status(error.message);}};
@@ -72,3 +72,63 @@ $('delete-form').onsubmit=async event=>{
   $('delete-dialog').close();await show('users');status('User login and cloud profile deleted. The action is recorded in moderation history.');
  }catch(error){$('delete-error').textContent=error.message;}finally{button.disabled=false;}
 };
+
+const aiTools=[
+ ['groq','openai/gpt-oss-120b','GPT OSS 120B','Card conversation, drafting, skills, memory cues and text cleanup'],
+ ['groq','whisper-large-v3','Whisper Large V3','Online speech transcription'],
+ ['groq','canopylabs/orpheus-v1-english','Orpheus English','Online spoken responses'],
+ ['cloudflare','@cf/baai/bge-small-en-v1.5','BGE Small English','Smart Recall and background indexing'],
+ ['cloudflare','@cf/meta/llama-3.2-3b-instruct','Llama 3.2 · 3B','Optional text path when no Groq key is configured'],
+];
+const aiNumber=value=>Number(value||0).toLocaleString();
+function quotaReset(value,observedAt){
+ if(!value||!/^([0-9]+(?:\.[0-9]+)?(?:h|m|s|ms|us|µs))+$/.test(value))return null;
+ let milliseconds=0;for(const match of value.matchAll(/([0-9]+(?:\.[0-9]+)?)(ms|us|µs|h|m|s)/g))milliseconds+=Number(match[1])*({h:3600000,m:60000,s:1000,ms:1,us:.001,'µs':.001}[match[2]]);
+ const result=Date.parse(observedAt)+milliseconds;return Number.isFinite(result)?result:null;
+}
+function quotaBlock(parent,snapshot,kind,title){
+ const headers=snapshot.headers,limit=Number(headers['limit-'+kind]),remaining=Number(headers['remaining-'+kind]);
+ if(!headers['limit-'+kind]||!headers['remaining-'+kind]||!Number.isFinite(limit)||limit<=0||!Number.isFinite(remaining)||remaining<0||remaining>limit)return false;
+ const used=limit-remaining,reset=quotaReset(headers['reset-'+kind],snapshot.observed_at),expired=reset!==null&&Date.now()>=reset;
+ const block=el('div',null,'ai-provider-quota');block.append(el('h4',title+(expired?' · expired snapshot':'')));
+ const meter=el('progress');meter.max=limit;meter.value=used;meter.setAttribute('aria-label',`${title}, last reported ${aiNumber(used)} used of ${aiNumber(limit)}`);
+ block.append(meter,el('p',`${aiNumber(used)} / ${aiNumber(limit)} used (${(used/limit*100).toFixed(1)}%) · ${aiNumber(remaining)} remaining at snapshot`));
+ if(reset!==null)block.append(el('p',`Reset ${expired?'was expected':'expected'}: ${new Date(reset).toLocaleString()}`,'muted'));
+ else if(headers['reset-'+kind])block.append(el('p',`Provider reset interval: ${headers['reset-'+kind]}`,'muted'));
+ parent.append(block);return true;
+}
+async function renderAIUsage(){
+ for(const id of ['ai-stats','ai-model-usage'])$(id).replaceChildren();$('ai-updated').textContent='';$('ai-coverage').textContent='';
+ const result=await data('/api/ai-usage');if($('dashboard').hidden||currentView!=='ai')return;
+ const summary=result.summary;
+ for(const [label,value] of [['Model calls today (UTC)',summary.today],['Model calls · last 7 days',summary.week],['Model calls this month (UTC)',summary.month],['Total calls since tracking began',summary.trackedTotal]]){
+  const tile=el('article',null,'stat');tile.append(el('small',label),el('strong',aiNumber(value)));$('ai-stats').append(tile);
+ }
+ $('ai-updated').textContent=`Usage refreshed ${new Date(result.generatedAt).toLocaleString()} · Counts across all app users · Daily totals use UTC`;
+ $('ai-coverage').textContent=summary.trackingSince?`Per-model tracking began ${new Date(summary.trackingSince).toLocaleString()}. Earlier requests cannot be reliably split by model; they are excluded from these totals.`:'Per-model tracking is enabled. Calls and quota snapshots will appear as each tool is used. Earlier requests cannot be reliably split by model.';
+ const tools=[...aiTools];for(const row of result.models)if(!tools.some(tool=>tool[0]===row.provider&&tool[1]===row.model))tools.push([row.provider,row.model,row.model,'Additional metered model']);
+ for(const [provider,model,name,description] of tools){
+  const row=result.models.find(item=>item.provider===provider&&item.model===model),snapshot=result.quotas.find(item=>item.provider===provider&&item.model===model);
+  const card=el('article',null,'panel');card.append(el('span',provider==='groq'?'GROQ':'CLOUDFLARE','badge'),el('h3',name),el('code',model),el('p',description));
+  card.append(el('p',row?`${aiNumber(row.today)} calls today · ${aiNumber(row.month)} this month · ${aiNumber(row.calls)} since tracking began`:'No tracked calls for this model yet.'));
+  if(row){card.append(el('p',`${aiNumber(row.succeeded)} completed · ${aiNumber(row.failed)} failed`,'muted'));
+   card.append(el('p',row.token_responses>0?`Reported tokens: ${aiNumber(row.input_tokens)} input + ${aiNumber(row.output_tokens)} output · ${aiNumber(row.token_responses)} of ${aiNumber(row.calls)} calls supplied complete token usage`:'Token usage: not reported by this model.','muted'));
+   if(row.characters>0)card.append(el('p',`${aiNumber(row.characters)} input characters sent (not billed units)`,'muted'));
+   if(row.audio_responses>0)card.append(el('p',`${Number(row.audio_seconds).toFixed(1)} audio seconds reported across ${aiNumber(row.audio_responses)} calls (not billed units)`,'muted'));
+  }
+  if(provider==='cloudflare'&&row&&row.today_token_responses>0){
+   const rate={'@cf/baai/bge-small-en-v1.5':[1841,0],'@cf/meta/llama-3.2-3b-instruct':[4625,30475]}[model];
+   if(rate){const neurons=(Number(row.today_input_tokens)*rate[0]+Number(row.today_output_tokens)*rate[1])/1000000;
+    const block=el('div',null,'ai-provider-quota');block.append(el('h4','Estimated app neuron usage today'),el('p',`${neurons.toLocaleString(undefined,{maximumFractionDigits:4})} neurons · ${(neurons/10000*100).toFixed(5)}% of the 10,000-neuron daily included account allocation`));
+    block.append(el('p',`Based on provider-reported tokens from ${row.today_token_responses} of ${row.today} calls today and Cloudflare rates checked 20 October 2026. Models share the account allocation; other apps and unmeasured calls are excluded. This is not the account’s remaining balance or a hard spending cap.`,'muted'));card.append(block);
+   }
+  }
+  if(snapshot){
+   let visible=quotaBlock(card,snapshot,'requests','Organisation daily request quota');visible=quotaBlock(card,snapshot,'tokens','Organisation token quota per minute')||visible;
+   if(!visible)card.append(el('p','Provider did not return a complete quota measurement.','muted'));
+   card.append(el('p',`Provider snapshot: ${new Date(snapshot.observed_at).toLocaleString()}. Values are historical until another call updates them.`,'muted'));
+  }else card.append(el('p',provider==='groq'?'Provider quota: awaiting this model’s next response.':'Account neuron quota: unavailable through the current Workers AI binding. View account usage in Cloudflare.','muted'));
+  $('ai-model-usage').append(card);
+ }
+}
+$('ai-refresh').onclick=()=>show('ai');

@@ -13,6 +13,28 @@ import 'package:contact_card_builder/widgets/social_links_editor.dart';
 import 'package:contact_card_builder/widgets/wallet_free_slots.dart';
 
 void main() {
+
+  testWidgets('empty slots stay separated at large text sizes', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(MaterialApp(
+      home: MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+        child: Scaffold(body: SingleChildScrollView(
+          child: WalletFreeSlots(used: 1, remaining: 4, onAdd: () {}),
+        )),
+      ),
+    ));
+    final rows = find.descendant(of: find.byType(WalletFreeSlots), matching: find.byType(Material));
+    expect(rows, findsNWidgets(4));
+    for (var i = 1; i < 4; i++) {
+      expect(tester.getRect(rows.at(i)).top, greaterThan(tester.getRect(rows.at(i - 1)).bottom));
+    }
+    expect(tester.takeException(), isNull);
+  });
+
   test(
     'manual comma-separated tags have individual limits, not a 50 character total',
     () {

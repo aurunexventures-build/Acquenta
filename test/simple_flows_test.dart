@@ -1,3 +1,4 @@
+import 'aai_test_helpers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -13,7 +14,6 @@ import 'package:contact_card_builder/services/own_card_search.dart';
 import 'package:contact_card_builder/services/search_service.dart';
 import 'package:contact_card_builder/services/storage_service.dart';
 import 'package:contact_card_builder/widgets/recall_network.dart';
-import 'package:contact_card_builder/widgets/voice_magic_bar.dart';
 
 ContactCard ownCard(String id, String pitch) => ContactCard(
   id: id,
@@ -102,7 +102,10 @@ void main() {
         await tester.pumpWidget(
           MaterialApp(
             home: Scaffold(
+              // The real dialog is on the navigator overlay; apply keyboard insets once.
+              resizeToAvoidBottomInset: false,
               body: ProfileQuestionnaire(
+                voice: SilentCardVoice(),
                 generate: (_) async => {
                   'role': 'Creator',
                   'pitch': 'I create Android apps.',
@@ -112,21 +115,22 @@ void main() {
             ),
           ),
         );
-        expect(find.byType(VoiceMagicBar), findsOneWidget);
-        expect(find.text('Speak'), findsOneWidget);
-        expect(find.text('Draft my card'), findsOneWidget);
-        final work = find.byType(TextFormField).first;
+        await tester.pumpAndSettle();
+        expect(find.byTooltip('Resume voice conversation'), findsOneWidget);
+        expect(find.byKey(const ValueKey('card-conversation')), findsOneWidget);
+        final work = find.byKey(const ValueKey('conversation-reply'));
         await tester.enterText(work, 'I create Android apps.');
         tester.view.viewInsets = const FakeViewPadding(bottom: 280);
         await tester.pumpAndSettle();
-        expect(find.byTooltip('Draft my card'), findsOneWidget);
+        expect(find.byTooltip('Resume voice conversation'), findsOneWidget);
         expect(tester.takeException(), isNull);
         tester.view.resetViewInsets();
         await tester.pumpAndSettle();
-        await tester.ensureVisible(find.text('Draft my card'));
-        await tester.tap(find.text('Draft my card'));
-        await tester.pumpAndSettle();
-        expect(find.text('Review your draft'), findsOneWidget);
+        await answerCardQuestions(
+          tester,
+          description: 'I create Android apps.',
+        );
+        expect(find.text('Review your answers'), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );
